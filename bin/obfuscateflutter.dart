@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:obfuscateflutter/build_apk.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
+import 'package:obfuscateflutter/img_change_md5.dart';
 import 'package:obfuscateflutter/reame_libs_dir_names.dart';
 import 'package:obfuscateflutter/rename_files_name.dart';
 import 'package:yaml/yaml.dart';
@@ -13,7 +14,6 @@ void main(List<String> arguments) async {
   print('Hello, Creeper!');
   print(
       'brfore you start this project change all relative import to start with package import!');
-  print('please input flutter project:');
 
   String projectPath = '';
   var argPath = getArgsPath(arguments);
@@ -47,6 +47,12 @@ void main(List<String> arguments) async {
   pubSpaceName = yamlMap['name'].toString();
 
   print('flutter project pubspec name is $pubSpaceName');
+
+  print('change asserts images name');
+  changeImageMd5(project.path);
+  print('change asserts images name finished!!');
+
+  sleep(Duration(seconds: 3));
   print("start gen android obfuscate dictory");
   genAndroidProguardDict(project.path);
 
