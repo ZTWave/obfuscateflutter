@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:args/args.dart';
+import 'package:obfuscateflutter/build_apk.dart';
 
 void main(List<String> arguments) {
   print('Hello, Creeper!');
@@ -53,6 +54,10 @@ void main(List<String> arguments) {
   sleep(Duration(seconds: 3));
   print("start rename lib's child file name and refresh code import");
   _renameAllFileNames(project);
+
+  print("build apk start...");
+  sleep(Duration(seconds: 1));
+  buildReleaseApk(projectPath);
 }
 
 _renameAllFileNames(Directory project) {
