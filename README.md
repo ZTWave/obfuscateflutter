@@ -1,2 +1,9 @@
-A sample command-line application with an entrypoint in `bin/`, library code
-in `lib/`, and example unit test in `test/`.
+
+# README
+
+obfuscate an flutter project libs child file and floder name and update import.
+
+try  
+`
+    dart run ./bin/obfuscateflutter.dart -d=<flutter dir>
+`  
