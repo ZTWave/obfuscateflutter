@@ -1,22 +1,27 @@
+import 'dart:convert';
 import 'dart:core';
 import 'dart:developer' as dev;
 import 'dart:io';
 import 'dart:math';
 
-import 'package:args/args.dart';
 import 'package:obfuscateflutter/build_apk.dart';
 
-void main(List<String> arguments) {
+void main() async {
   print('Hello, Creeper!');
   print(
       'brfore you start this project change all relative import to start with package import!');
   print('please input flutter project:');
 
-  final parser = ArgParser()..addOption("dir", abbr: 'd');
-  ArgResults argResults = parser.parse(arguments);
-  final paths = argResults.rest;
+  final process = await Process.start(
+    'chdir',
+    [],
+    runInShell: true,
+  );
+  print('out');
+  var out = await process.stdout.transform(utf8.decoder).join();
+  process.kill();
 
-  final String projectPath = argResults["dir"];
+  final String projectPath = out.replaceAll('\n', '').trim();
 
   print('project path : $projectPath');
   if (projectPath == null || projectPath.isEmpty == true) {
