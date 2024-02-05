@@ -48,25 +48,56 @@ void main(List<String> arguments) async {
 
   print('flutter project pubspec name is $pubSpaceName');
 
-  print('change asserts images name');
-  changeImageMd5(project.path);
-  print('change asserts images name finished!!');
+  _readTaskAndDo(project, pubSpaceName);
+}
 
-  sleep(Duration(seconds: 3));
-  print("start gen android obfuscate dictory");
-  genAndroidProguardDict(project.path);
+void _readTaskAndDo(Directory project, String pubSpaceName) {
+  print(
+      'please select task to run\n1.修改图片MD5\n2.生成Android Proguard混淆字典\n3.重命名lib下的目录名称\n4.重命名所有文件名\n5.打包ReleaseApk');
+  print('输入要运行的任务：');
+  var task = stdin.readLineSync();
 
-  sleep(Duration(seconds: 3));
-  print("start rename lib's child folders name and refresh code import");
-  reNameAllDictorysAndRefresh(project, pubSpaceName);
-
-  sleep(Duration(seconds: 3));
-  print("start rename lib's child file name and refresh code import");
-  renameAllFileNames(project);
-
-  print("build apk start...");
-  sleep(Duration(seconds: 1));
-  buildReleaseApk(projectPath);
+  switch (task) {
+    case "1":
+      {
+        print('change asserts images name');
+        changeImageMd5(project.path);
+        print('change asserts images name finished!!');
+        break;
+      }
+    case "2":
+      {
+        sleep(Duration(seconds: 3));
+        print("start gen android obfuscate dictory");
+        genAndroidProguardDict(project.path);
+        break;
+      }
+    case "3":
+      {
+        sleep(Duration(seconds: 3));
+        print("start rename lib's child folders name and refresh code import");
+        reNameAllDictorysAndRefresh(project, pubSpaceName);
+        break;
+      }
+    case "4":
+      {
+        sleep(Duration(seconds: 3));
+        print("start rename lib's child file name and refresh code import");
+        renameAllFileNames(project);
+        break;
+      }
+    case "5":
+      {
+        print("build apk start...");
+        sleep(Duration(seconds: 3));
+        buildReleaseApk(project.path);
+        break;
+      }
+    default:
+      {
+        _readTaskAndDo(project, pubSpaceName);
+      }
+  }
 }
 
 Future<String> getCurrentPathByShell() async {
