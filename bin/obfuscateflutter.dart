@@ -53,44 +53,34 @@ void main(List<String> arguments) async {
 
 void _readTaskAndDo(Directory project, String pubSpaceName) {
   print(
-      'please select task to run\n1.修改图片MD5\n2.生成Android Proguard混淆字典\n3.重命名lib下的目录名称\n4.重命名所有文件名\n5.打包ReleaseApk');
+      'please select task to run\n1.修改图片MD5\n2.生成Android Proguard混淆字典\n3.重命名lib下的目录名称\n4.重命名所有文件名\n5.打包ReleaseApk\n9.按顺序执行上述所有任务');
   print('输入要运行的任务：');
   var task = stdin.readLineSync();
 
   switch (task) {
     case "1":
       {
-        print('change asserts images name');
-        changeImageMd5(project.path);
-        print('change asserts images name finished!!');
+        _runChangeImageMd5(project);
         break;
       }
     case "2":
       {
-        sleep(Duration(seconds: 3));
-        print("start gen android obfuscate dictory");
-        genAndroidProguardDict(project.path);
+        _runGenAndroidProguardDict(project);
         break;
       }
     case "3":
       {
-        sleep(Duration(seconds: 3));
-        print("start rename lib's child folders name and refresh code import");
-        reNameAllDictorysAndRefresh(project, pubSpaceName);
+        _runObfuscateAllLibsDirs(project, pubSpaceName);
         break;
       }
     case "4":
       {
-        sleep(Duration(seconds: 3));
-        print("start rename lib's child file name and refresh code import");
-        renameAllFileNames(project);
+        _runObfuscateAllFileNames(project);
         break;
       }
     case "5":
       {
-        print("build apk start...");
-        sleep(Duration(seconds: 3));
-        buildReleaseApk(project.path);
+        _runBuildReleaseArmV8Apk(project);
         break;
       }
     default:
@@ -98,6 +88,36 @@ void _readTaskAndDo(Directory project, String pubSpaceName) {
         _readTaskAndDo(project, pubSpaceName);
       }
   }
+}
+
+_runChangeImageMd5(Directory project) {
+  print('change asserts images name');
+  changeImageMd5(project.path);
+  print('change asserts images name finished!!');
+}
+
+_runGenAndroidProguardDict(Directory project) {
+  sleep(Duration(seconds: 3));
+  print("start gen android obfuscate dictory");
+  genAndroidProguardDict(project.path);
+}
+
+_runObfuscateAllLibsDirs(Directory project, String pubSpaceName) {
+  sleep(Duration(seconds: 3));
+  print("start rename lib's child folders name and refresh code import");
+  reNameAllDictorysAndRefresh(project, pubSpaceName);
+}
+
+_runObfuscateAllFileNames(Directory project) {
+  sleep(Duration(seconds: 3));
+  print("start rename lib's child file name and refresh code import");
+  renameAllFileNames(project);
+}
+
+_runBuildReleaseArmV8Apk(Directory project) {
+  print("build apk start...");
+  sleep(Duration(seconds: 3));
+  buildReleaseApk(project.path);
 }
 
 Future<String> getCurrentPathByShell() async {
