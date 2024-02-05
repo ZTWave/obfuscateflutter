@@ -3,15 +3,16 @@ import 'dart:math';
 
 import 'package:obfuscateflutter/pair.dart';
 import 'package:obfuscateflutter/random_key.dart';
+import 'package:path/path.dart' as p;
 
 ///更新目录名称并更新到代码中
-void reNameAllDictorysAndRefresh(Directory project, String pubSpaceName) {
+void reNameAllDictorysAndRefresh(String projectPath, String pubSpaceName) {
   print("");
 
-  Directory libDir = Directory(project.path + "\\lib");
+  Directory libDir = Directory(p.join(projectPath, "lib"));
   final List<FileSystemEntity> entities =
       libDir.listSync(recursive: true).toList();
-  var dirNamesSet = Set<String>();
+  var dirNamesSet = <String>{};
 
   var childDirs = <Directory>[];
   entities.forEach((element) {
@@ -19,7 +20,7 @@ void reNameAllDictorysAndRefresh(Directory project, String pubSpaceName) {
       childDirs.add(element);
       print(element.toString());
       var relativePath = element.path.replaceAll(libDir.path, '');
-      var dirNames = relativePath.split("\\");
+      var dirNames = relativePath.split(p.separator);
       dirNames.removeWhere((element) => element.isEmpty);
       dirNamesSet.addAll(dirNames);
     }
@@ -91,13 +92,13 @@ void reNameAllDictorysAndRefresh(Directory project, String pubSpaceName) {
 extension Obfuscate on String {
   String obfuscae(Map<String, String> obMap) {
     String originStr = this;
-    List originSplited = originStr.split('\\');
+    List originSplited = originStr.split(p.separator);
     var matchIndex = originSplited.indexOf(originSplited.last);
     if (matchIndex > 0) {
       originSplited[matchIndex] = obMap[originSplited.last];
     }
 
-    return originSplited.join("\\");
+    return originSplited.join(p.separator);
   }
 }
 
@@ -114,17 +115,17 @@ extension ObfuscateFile on File {
       }
       print('line -> $line');
       map.forEach((obEntity) {
-        var old = importPrefix + obEntity.a.replaceAll("\\", "/") + '/';
+        var old = '$importPrefix${obEntity.a.replaceAll(p.separator, "/")}/';
         var old2 =
-            importPrefixQuotedTwo + obEntity.a.replaceAll("\\", "/") + '/';
+            '$importPrefixQuotedTwo${obEntity.a.replaceAll(p.separator, "/")}/';
         if (line.startsWith(old)) {
-          var nen = importPrefix + obEntity.b.replaceAll("\\", "/") + '/';
+          var nen = '$importPrefix${obEntity.b.replaceAll(p.separator, "/")}/';
           print('replace $old -> $nen');
           line = line.replaceAll(old, nen);
         }
         if (line.startsWith(old2)) {
           var nen =
-              importPrefixQuotedTwo + obEntity.b.replaceAll("\\", "/") + '/';
+              '$importPrefixQuotedTwo${obEntity.b.replaceAll(p.separator, "/")}/';
           print('replace $old2 -> $nen');
           line = line.replaceAll(old2, nen);
         }

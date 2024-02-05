@@ -1,13 +1,15 @@
-import 'dart:convert';
 import 'dart:core';
 import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:obfuscateflutter/build_apk.dart';
+import 'package:obfuscateflutter/cmd_utils.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
 import 'package:obfuscateflutter/reame_libs_dir_names.dart';
 import 'package:obfuscateflutter/rename_files_name.dart';
+import 'package:obfuscateflutter/temp_proj_utils.dart';
+import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
 void main(List<String> arguments) async {
@@ -24,7 +26,7 @@ void main(List<String> arguments) async {
   }
 
   print('project path : $projectPath');
-  if (projectPath == null || projectPath.isEmpty == true) {
+  if (projectPath.isEmpty == true) {
     print('flutter project is empty!!!');
     return;
   }
@@ -40,7 +42,7 @@ void main(List<String> arguments) async {
     return;
   }
 
-  var pubFile = File(project.path + "\\pubspec.yaml");
+  var pubFile = File(p.join(project.path, "pubspec.yaml"));
   var pubSpaceName = '';
 
   final yamlMap = loadYaml(pubFile.readAsStringSync());
@@ -48,10 +50,10 @@ void main(List<String> arguments) async {
 
   print('flutter project pubspec name is $pubSpaceName');
 
-  _readTaskAndDo(project, pubSpaceName);
+  _readTaskAndDo(project.path, pubSpaceName);
 }
 
-void _readTaskAndDo(Directory project, String pubSpaceName) {
+void _readTaskAndDo(String projectPath, String pubSpaceName) {
   print(
       'please select task to run\n1.修改图片MD5\n2.生成Android Proguard混淆字典\n3.重命名lib下的目录名称\n4.重命名所有文件名\n5.打包ReleaseApk\n9.按顺序执行上述所有任务');
   print('输入要运行的任务：');
@@ -60,77 +62,75 @@ void _readTaskAndDo(Directory project, String pubSpaceName) {
   switch (task) {
     case "1":
       {
-        _runChangeImageMd5(project);
+        _runChangeImageMd5(projectPath);
         break;
       }
     case "2":
       {
-        _runGenAndroidProguardDict(project);
+        _runGenAndroidProguardDict(projectPath);
         break;
       }
     case "3":
       {
-        _runObfuscateAllLibsDirs(project, pubSpaceName);
+        _runObfuscateAllLibsDirs(projectPath, pubSpaceName);
         break;
       }
     case "4":
       {
-        _runObfuscateAllFileNames(project);
+        _runObfuscateAllFileNames(projectPath);
         break;
       }
     case "5":
       {
-        _runBuildReleaseArmV8Apk(project);
+        _runBuildReleaseArmV8Apk(projectPath);
+        break;
+      }
+    case "9":
+      {
+        changeToTempDirAndRun(projectPath, pubSpaceName, (projectPathNew) {
+          _runChangeImageMd5(projectPathNew);
+          _runGenAndroidProguardDict(projectPathNew);
+          _runObfuscateAllLibsDirs(projectPathNew, pubSpaceName);
+          _runObfuscateAllFileNames(projectPathNew);
+          return _runBuildReleaseArmV8Apk(projectPathNew);
+        });
         break;
       }
     default:
       {
-        _readTaskAndDo(project, pubSpaceName);
+        _readTaskAndDo(projectPath, pubSpaceName);
       }
   }
 }
 
-_runChangeImageMd5(Directory project) {
+_runChangeImageMd5(String projectPath) {
   print('change asserts images name');
-  changeImageMd5(project.path);
+  changeImageMd5(projectPath);
   print('change asserts images name finished!!');
 }
 
-_runGenAndroidProguardDict(Directory project) {
+_runGenAndroidProguardDict(String projectPath) {
   sleep(Duration(seconds: 3));
   print("start gen android obfuscate dictory");
-  genAndroidProguardDict(project.path);
+  genAndroidProguardDict(projectPath);
 }
 
-_runObfuscateAllLibsDirs(Directory project, String pubSpaceName) {
+_runObfuscateAllLibsDirs(String projectPath, String pubSpaceName) {
   sleep(Duration(seconds: 3));
   print("start rename lib's child folders name and refresh code import");
-  reNameAllDictorysAndRefresh(project, pubSpaceName);
+  reNameAllDictorysAndRefresh(projectPath, pubSpaceName);
 }
 
-_runObfuscateAllFileNames(Directory project) {
+_runObfuscateAllFileNames(String projectPath) {
   sleep(Duration(seconds: 3));
   print("start rename lib's child file name and refresh code import");
-  renameAllFileNames(project);
+  renameAllFileNames(projectPath);
 }
 
-_runBuildReleaseArmV8Apk(Directory project) {
+Future<String> _runBuildReleaseArmV8Apk(String projectPath) async {
   print("build apk start...");
   sleep(Duration(seconds: 3));
-  buildReleaseApk(project.path);
-}
-
-Future<String> getCurrentPathByShell() async {
-  final process = await Process.start(
-    'chdir',
-    [],
-    runInShell: true,
-  );
-  print('out');
-  var out = await process.stdout.transform(utf8.decoder).join();
-  process.kill();
-
-  return out.replaceAll('\n', '').trim();
+  return await buildReleaseApk(projectPath);
 }
 
 String getArgsPath(List<String> arguments) {

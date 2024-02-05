@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:obfuscateflutter/pair.dart';
 import 'package:obfuscateflutter/random_key.dart';
 
-renameAllFileNames(Directory project) {
-  Directory libDir = Directory(project.path + "\\lib");
+renameAllFileNames(String projectPath) {
+  Directory libDir = Directory(projectPath + "\\lib");
   final List<FileSystemEntity> entities =
       libDir.listSync(recursive: true).toList();
 
@@ -29,7 +29,7 @@ renameAllFileNames(Directory project) {
     print(element);
   });
 
-  File replaceNameLog = File(project.path + "\\replace_name.log");
+  File replaceNameLog = File(projectPath + "\\replace_name.log");
   replaceNameLog.writeAsStringSync(obMap.map((e) => e.toString()).join("\n"));
 
   print("replaceing file ...");
