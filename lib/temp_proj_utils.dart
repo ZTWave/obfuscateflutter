@@ -48,6 +48,11 @@ changeToTempDirAndRun(String baseProject, String pubSpaceName,
 
   sleep(Duration(seconds: 1));
 
+  Directory outputDir = Directory(outputPath);
+  if (!outputDir.existsSync()) {
+    outputDir.createSync();
+  }
+
   await copy(apkFile.path, outputPath);
 
   print("转移生成的apk至 ${p.join(outputPath, apkName)}");
