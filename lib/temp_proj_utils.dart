@@ -50,7 +50,7 @@ changeToTempDirAndRun(String baseProject, String pubSpaceName,
 
   await copy(apkFile.path, outputPath);
 
-  print("转移生成的apk至 $outputPath");
+  print("转移生成的apk至 ${p.join(outputPath, apkName)}");
 
   temp.deleteSync(recursive: true);
   print('delete temp dic done');
