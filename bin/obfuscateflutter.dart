@@ -6,6 +6,7 @@ import 'package:obfuscateflutter/build_apk.dart';
 import 'package:obfuscateflutter/cmd_utils.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
+import 'package:obfuscateflutter/proguard_images.dart';
 import 'package:obfuscateflutter/reame_libs_dir_names.dart';
 import 'package:obfuscateflutter/rename_files_name.dart';
 import 'package:obfuscateflutter/temp_proj_utils.dart';
@@ -55,7 +56,7 @@ void main(List<String> arguments) async {
 
 void _readTaskAndDo(String projectPath, String pubSpaceName) {
   print(
-      'please select task to run\n1.修改图片MD5\n2.生成Android Proguard混淆字典\n3.重命名lib下的目录名称\n4.重命名所有文件名\n5.打包ReleaseApk\n9.按顺序执行上述所有任务');
+      'please select task to run\n1.修改图片MD5\n2.混淆图片名称并清理\n3.生成Android Proguard混淆字典\n4.重命名lib下的目录名称\n5.重命名所有文件名\n6.打包ReleaseApk\n9.按顺序执行上述所有任务');
   print('输入要运行的任务：');
   var task = stdin.readLineSync();
 
@@ -67,20 +68,25 @@ void _readTaskAndDo(String projectPath, String pubSpaceName) {
       }
     case "2":
       {
-        _runGenAndroidProguardDict(projectPath);
+        _proguadImageNameAndClean(projectPath);
         break;
       }
     case "3":
       {
-        _runObfuscateAllLibsDirs(projectPath, pubSpaceName);
+        _runGenAndroidProguardDict(projectPath);
         break;
       }
     case "4":
       {
-        _runObfuscateAllFileNames(projectPath);
+        _runObfuscateAllLibsDirs(projectPath, pubSpaceName);
         break;
       }
     case "5":
+      {
+        _runObfuscateAllFileNames(projectPath);
+        break;
+      }
+    case "6":
       {
         _runBuildReleaseArmV8Apk(projectPath);
         break;
@@ -107,6 +113,13 @@ _runChangeImageMd5(String projectPath) {
   print('change asserts images name');
   changeImageMd5(projectPath);
   print('change asserts images name finished!!');
+}
+
+void _proguadImageNameAndClean(String projectPath) {
+  print('proguard images name and clean');
+  sleep(Duration(seconds: 3));
+  proguardImages(projectPath);
+  print('proguard images name and clean!!');
 }
 
 _runGenAndroidProguardDict(String projectPath) {

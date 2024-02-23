@@ -3,9 +3,8 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:obfuscateflutter/consts.dart';
 import 'package:obfuscateflutter/random_key.dart';
-
-const imagesExtNames = ['.png', '.webp', '.jpg'];
 
 void changeImageMd5(String path) {
   Directory assertsDir = Directory(path + "\\asserts");
@@ -14,7 +13,7 @@ void changeImageMd5(String path) {
   List<File> images = List.empty(growable: true);
   for (var element in fileEles) {
     if (element is File) {
-      if (imagesExtNames.contains(_getFileExtName(element))) {
+      if (imagesExtNames.contains(getFileExtName(element))) {
         images.add(element);
       }
     }
@@ -42,6 +41,3 @@ _printMd5(File file) {
   print(md5Str);
 }
 
-String _getFileExtName(File file) {
-  return '.' + file.path.split('.').last;
-}
