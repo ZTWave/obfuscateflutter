@@ -95,6 +95,7 @@ void _readTaskAndDo(String projectPath, String pubSpaceName) {
       {
         changeToTempDirAndRun(projectPath, pubSpaceName, (projectPathNew) {
           _runChangeImageMd5(projectPathNew);
+          _proguadImageNameAndClean(projectPathNew);
           _runGenAndroidProguardDict(projectPathNew);
           _runObfuscateAllLibsDirs(projectPathNew, pubSpaceName);
           _runObfuscateAllFileNames(projectPathNew);
