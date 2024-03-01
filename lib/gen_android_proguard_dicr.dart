@@ -2,10 +2,11 @@ import 'dart:io';
 import 'dart:developer' as dev;
 
 import 'package:obfuscateflutter/random_key.dart';
+import 'package:path/path.dart' as p;
 
 genAndroidProguardDict(String flutterProjectPath) {
   //new dict.txt for android project
-  String androidProjectPath = flutterProjectPath + "\\android";
+  String androidProjectPath = p.join(flutterProjectPath, "android");
   Directory? androidProject;
   try {
     androidProject = Directory(androidProjectPath);
@@ -18,7 +19,7 @@ genAndroidProguardDict(String flutterProjectPath) {
   }
   print("android project path -> $androidProjectPath");
 
-  String porgardDictPath = androidProjectPath + "\\app\\dict.txt";
+  String porgardDictPath = p.join(androidProjectPath, "app", "dict.txt");
 
   File progardDict = File(porgardDictPath);
 

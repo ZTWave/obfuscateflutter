@@ -5,9 +5,10 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:obfuscateflutter/consts.dart';
 import 'package:obfuscateflutter/random_key.dart';
+import 'package:path/path.dart' as p;
 
 void changeImageMd5(String path) {
-  Directory assertsDir = Directory(path + "\\asserts");
+  Directory assertsDir = Directory(p.join(path, "asserts"));
 
   var fileEles = assertsDir.listSync(recursive: true);
   List<File> images = List.empty(growable: true);
@@ -40,4 +41,3 @@ _printMd5(File file) {
   var md5Str = md5.convert(bytes).toString();
   print(md5Str);
 }
-

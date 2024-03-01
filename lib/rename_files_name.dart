@@ -2,9 +2,10 @@ import 'dart:io';
 
 import 'package:obfuscateflutter/pair.dart';
 import 'package:obfuscateflutter/random_key.dart';
+import 'package:path/path.dart' as p;
 
 renameAllFileNames(String projectPath) {
-  Directory libDir = Directory(projectPath + "\\lib");
+  Directory libDir = Directory(p.join(projectPath, "lib"));
   final List<FileSystemEntity> entities =
       libDir.listSync(recursive: true).toList();
 
@@ -18,7 +19,8 @@ renameAllFileNames(String projectPath) {
     }
 
     ///a.dart
-    fileNameSet.add(element.path.split("\\").last.replaceAll(".dart", ""));
+    fileNameSet
+        .add(element.path.split(p.separator).last.replaceAll(".dart", ""));
   });
   fileObfuscateNameSet = genRandomKeys(fileNameSet.length).toList();
   List<Pair<String, String>> obMap =
@@ -29,7 +31,7 @@ renameAllFileNames(String projectPath) {
     print(element);
   });
 
-  File replaceNameLog = File(projectPath + "\\replace_name.log");
+  File replaceNameLog = File(p.join(projectPath, "replace_name.log"));
   replaceNameLog.writeAsStringSync(obMap.map((e) => e.toString()).join("\n"));
 
   print("replaceing file ...");
@@ -61,13 +63,13 @@ renameAllFileNames(String projectPath) {
     file.writeAsStringSync(obfuscateContent.join("\n"));
     String newPath = file.path;
     //skip main.dart
-    if (!newPath.contains("\\main.dart")) {
+    if (!newPath.contains("${p.separator}main.dart")) {
       obMap.forEach((obFileNameMap) {
-        if (newPath.contains("\\" + obFileNameMap.a + '.dart')) {
+        if (newPath.contains('${p.separator}${obFileNameMap.a}.dart')) {
           print(
               "old path -> $newPath new ob-path replace ${obFileNameMap.a + '.dart'} to ${obFileNameMap.b + '.dart'}");
           newPath = newPath.replaceAll(
-              obFileNameMap.a + '.dart', obFileNameMap.b + '.dart');
+              '${obFileNameMap.a}.dart', '${obFileNameMap.b}.dart');
         }
       });
       file.renameSync(newPath);
