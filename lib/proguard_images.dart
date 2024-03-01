@@ -43,10 +43,14 @@ void proguardImages(String projectPath) {
     String codeStr = element.readAsStringSync();
     for (int i = 0; i < imageMapper.length; i++) {
       var imageItem = imageMapper[i];
-      if (codeStr.contains(imageItem.originalName)) {
+      if (codeStr.contains("\"${imageItem.originalName}\"") ||
+          codeStr.contains("'${imageItem.originalName}'")) {
         imageItem.used = true;
-        codeStr =
-            codeStr.replaceAll(imageItem.originalName, imageItem.proguardName);
+
+        codeStr = codeStr.replaceAll(
+            "\"${imageItem.originalName}\"", "\"${imageItem.proguardName}\"");
+        codeStr = codeStr.replaceAll(
+            "'${imageItem.originalName}'", "'${imageItem.proguardName}'");
       }
     }
     element.writeAsStringSync(codeStr, flush: true, mode: FileMode.write);
@@ -82,4 +86,9 @@ class ImageProguardData {
   bool used = false;
 
   ImageProguardData(this.originalName, this.proguardName, this.path);
+
+  @override
+  String toString() {
+    return "ImageProguardData originalName->$originalName proguardName->$proguardName path->$path used->$used";
+  }
 }
