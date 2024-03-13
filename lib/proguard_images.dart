@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math';
 
 import 'package:obfuscateflutter/consts.dart';
 import 'package:obfuscateflutter/random_key.dart';
@@ -20,11 +19,11 @@ void proguardImages(String projectPath) {
     }
   }
 
-  for (var element in images) {
-    imageMapper.add(ImageProguardData(
-        element.path.split(p.separator).last,
-        genRandomKey(Random().nextInt(3) + 2) + getFileExtName(element),
-        getFileDirPath(element)));
+  List<String> proguardKeys = genRandomKeys(images.length).toList();
+  for (int j = 0; j < images.length; j++) {
+    var element = images[j];
+    imageMapper.add(ImageProguardData(element.path.split(p.separator).last,
+        proguardKeys[j] + getFileExtName(element), getFileDirPath(element)));
   }
 
   Directory libDir = Directory(p.join(projectPath, "lib"));
@@ -43,12 +42,13 @@ void proguardImages(String projectPath) {
     String codeStr = element.readAsStringSync();
     for (int i = 0; i < imageMapper.length; i++) {
       var imageItem = imageMapper[i];
-      if (codeStr.contains("\"${imageItem.originalName}\"") ||
-          codeStr.contains("'${imageItem.originalName}'")) {
+      if (codeStr.contains("\"${imageItem.originalName}\"")) {
         imageItem.used = true;
-
         codeStr = codeStr.replaceAll(
             "\"${imageItem.originalName}\"", "\"${imageItem.proguardName}\"");
+      }
+      if (codeStr.contains("'${imageItem.originalName}'")) {
+        imageItem.used = true;
         codeStr = codeStr.replaceAll(
             "'${imageItem.originalName}'", "'${imageItem.proguardName}'");
       }
