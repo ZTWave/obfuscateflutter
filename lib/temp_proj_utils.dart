@@ -57,9 +57,9 @@ changeToTempDirAndRun(String baseProject, String pubSpaceName,
 
   print("转移生成的apk至 ${p.join(outputPath, apkName)}");
 
-  print("是否删除临时生成目录? 输入Y进行删除");
+  print("是否删除临时生成目录? 输入Y/y进行删除,其他跳过");
   var isDelete = stdin.readLineSync();
-  if (isDelete == "Y") {
+  if (["Y", "y"].contains(isDelete)) {
     temp.deleteSync(recursive: true);
     print('delete temp dic done');
   }
