@@ -36,9 +36,20 @@ flutterPubGet(String projectPath) async {
 
 copy(String oldPath, String newPath) async {
   print("run cmd copy from $oldPath to $newPath");
+
+  String cmd;
+  String arg;
+  if (Platform.isWindows) {
+    cmd = 'xcopy';
+    arg = '/S';
+  } else {
+    cmd = 'cp';
+    arg = '-r';
+  }
+
   final process = await Process.start(
-    'xcopy',
-    [oldPath, newPath, '/S'],
+    cmd,
+    [oldPath, newPath, arg],
     mode: ProcessStartMode.inheritStdio,
     runInShell: true,
   );
