@@ -5,9 +5,15 @@
 
 obfuscate an flutter project libs child file and floder name and update import.
 
-try run in shell  
+first run  
 `
-dart run ./bin/obfuscateflutter.dart -d=<flutter_project_dir>
+dart pub get
+`
+
+then run  
+`
+dart run ./bin/obfuscateflutter.dart -d <flutter_project_dir>
 `  
 
-if run with no -d=<flutter_project_dir> will use parent location path.
+then you can get apk-v8 file from shell output.
+if run with no `-d <flutter_project_dir>` will use parent location path install.
