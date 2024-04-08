@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:obfuscateflutter/consts.dart';
 import 'package:obfuscateflutter/pair.dart';
 import 'package:obfuscateflutter/random_key.dart';
 import 'package:path/path.dart' as p;
@@ -36,7 +37,7 @@ renameAllFileNames(String projectPath) {
 
   print("replaceing file ...");
   allFiles.forEach((file) {
-    if (file is! File) {
+    if (file is! File || getFileExtName(file) != '.dart') {
       return;
     }
     var originContent = file.readAsLinesSync();

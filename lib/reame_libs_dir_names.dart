@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:obfuscateflutter/consts.dart';
 import 'package:obfuscateflutter/pair.dart';
 import 'package:obfuscateflutter/random_key.dart';
 import 'package:path/path.dart' as p;
@@ -76,7 +77,7 @@ void reNameAllDictorysAndRefresh(String projectPath, String pubSpaceName) {
       libDir.listSync(recursive: true).toList();
   var childDartFiles = <File>[];
   entitiesChanged.forEach((element) {
-    if (element is File) {
+    if (element is File && getFileExtName(element) == ".dart") {
       childDartFiles.add(element);
     }
   });

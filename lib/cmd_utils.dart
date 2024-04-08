@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:path/path.dart' as p;
 
 flutterClean(String projectPath) async {
   print("run flutter clean");
@@ -42,6 +43,9 @@ copy(String oldPath, String newPath) async {
   if (Platform.isWindows) {
     cmd = 'xcopy';
     arg = [oldPath, newPath, '/S'];
+  } else if (Platform.isMacOS) {
+    cmd = 'cp';
+    arg = ['-R', oldPath + p.separator, newPath + p.separator];
   } else {
     cmd = 'cp';
     arg = ['-RT', oldPath, newPath];
