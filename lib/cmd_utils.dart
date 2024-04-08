@@ -38,18 +38,18 @@ copy(String oldPath, String newPath) async {
   print("run cmd copy from $oldPath to $newPath");
 
   String cmd;
-  String arg;
+  List<String> arg;
   if (Platform.isWindows) {
     cmd = 'xcopy';
-    arg = '/S';
+    arg = [oldPath, newPath, '/S'];
   } else {
     cmd = 'cp';
-    arg = '-r';
+    arg = ['-RT', oldPath, newPath];
   }
 
   final process = await Process.start(
     cmd,
-    [oldPath, newPath, arg],
+    arg,
     mode: ProcessStartMode.inheritStdio,
     runInShell: true,
   );
