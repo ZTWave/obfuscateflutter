@@ -1,22 +1,23 @@
 import 'dart:io';
 
 import 'package:intl/intl.dart';
+import 'package:obfuscateflutter/consts.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
-Future<String> buildReleaseApk(String path) async {
+Future<String> buildIPA(String path, bool isDev) async {
   // 控制台打印项目目录
-  print('项目目录：$path 开始编译 APK\n');
+  print('项目目录：$path 开始编译 IPA isDev -> $isDev \n');
 
   final process = await Process.start(
     'flutter',
     [
       'build',
-      'apk',
-      //'--verbose',
+      'ipa',
+      '--release',
+      isDev ? '--export-method development' : '',
       '--obfuscate',
       '--split-debug-info=./ob_trace',
-      '--split-per-abi'
     ],
     runInShell: true,
     workingDirectory: path,
@@ -41,9 +42,17 @@ Future<String> buildReleaseApk(String path) async {
   );
   final appName = yamlMap['name'].toString();
 
-  // apk 的输出目录
-  final apkDirectory = p.join(path, 'build', 'app', 'outputs', 'flutter-apk');
-  const buildAppName = 'app-arm64-v8a-release.apk';
+  // ipa 的输出目录
+  final ipaDirectory = p.join(path, 'build', 'ios', 'ipa');
+
+  Directory directory = Directory(ipaDirectory);
+  List<FileSystemEntity> dirList = directory.listSync(recursive: true);
+  late File buildAppFile;
+  dirList.forEach((element) {
+    if (element is File && getFileExtName(element) == '.ipa') {
+      buildAppFile = element;
+    }
+  });
   final timeStr = DateFormat('yyyyMMddHHmm').format(
     DateTime.now(),
   );
@@ -51,16 +60,17 @@ Future<String> buildReleaseApk(String path) async {
   final resultNameList = [
     appName,
     version,
+    isDev ? 'dev' : 'release',
     timeStr,
   ].where((element) => element.isNotEmpty).toList();
 
-  final resultAppName = '${resultNameList.join('_')}.apk';
-  final appPath = p.join(apkDirectory, resultAppName);
+  final resultAppName = '${resultNameList.join('_')}.ipa';
+  final appPath = p.join(ipaDirectory, resultAppName);
 
-  //重命名apk文件
-  final apkFile = File(p.join(apkDirectory, buildAppName));
-  await apkFile.rename(appPath);
-  stdout.write('apk 打包成功 >>>>> $appPath \n');
+  //重命名ipa文件
+  final appFile = File(buildAppFile.path);
+  await appFile.rename(appPath);
+  stdout.write('isDev ->$isDev ipa 打包成功 >>>>> $appPath \n');
 
   return appPath;
 }

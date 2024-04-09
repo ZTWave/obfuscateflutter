@@ -4,7 +4,7 @@ import 'package:obfuscateflutter/cmd_utils.dart';
 import 'package:path/path.dart' as p;
 
 changeToTempDirAndRun(String baseProject, String pubSpaceName,
-    Future<String> Function(String projectPath) launcher) async {
+    Future<void> Function(String projectPath) launcher) async {
   await flutterClean(baseProject);
   String tempDirName = "temp_$pubSpaceName";
 
@@ -31,19 +31,22 @@ changeToTempDirAndRun(String baseProject, String pubSpaceName,
 
   String newProjectPath = tempPath;
 
-  String apkPath = await launcher(newProjectPath);
+  await launcher(newProjectPath);
+}
 
-  File apkFile = File(apkPath);
-  if (apkPath.isEmpty || !apkFile.existsSync()) {
-    print("build apk failed!!");
+transOutputTo(String baseProjectPath, String tempProjectPath,
+    String outputFilePath) async {
+  File appFile = File(outputFilePath);
+  if (outputFilePath.isEmpty || !appFile.existsSync()) {
+    print("build output failed!!");
     return;
   }
 
-  String apkName = apkFile.path.split(p.separator).last;
+  String apkName = appFile.path.split(p.separator).last;
 
-  String outputPath = p.join(baseProject, 'apk_output');
+  String outputPath = p.join(baseProjectPath, 'output');
 
-  print("apkfile -> ${apkFile.path}");
+  print("app file -> ${appFile.path}");
   print("outpath -> $outputPath");
 
   sleep(Duration(seconds: 1));
@@ -53,9 +56,13 @@ changeToTempDirAndRun(String baseProject, String pubSpaceName,
     outputDir.createSync();
   }
 
-  await copy(apkFile.path, outputPath);
+  await copy(appFile.path, outputPath);
 
-  print("转移生成的apk至 ${p.join(outputPath, apkName)}");
+  print("转移生成的产物至 ${p.join(outputPath, apkName)}");
+}
+
+deleteTempProject(String tempProjectPath) async {
+  Directory temp = Directory(tempProjectPath);
 
   print("是否删除临时生成目录? 输入Y/y进行删除,其他跳过");
   var isDelete = stdin.readLineSync();

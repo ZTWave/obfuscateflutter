@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:args/args.dart';
 import 'package:obfuscateflutter/build_apk.dart';
+import 'package:obfuscateflutter/build_ipa.dart';
 import 'package:obfuscateflutter/cmd_utils.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
@@ -55,8 +56,15 @@ void main(List<String> arguments) async {
 }
 
 void _readTaskAndDo(String projectPath, String pubSpaceName) {
-  print(
-      'please select task to run\n1.修改图片MD5\n2.混淆图片名称并清理\n3.生成Android Proguard混淆字典\n4.重命名lib下的目录名称\n5.重命名所有文件名\n6.打包ReleaseApk\n9.按顺序执行上述所有任务');
+  print(r'''
+  please select task to run
+  1.修改图片MD5
+  2.混淆图片名称并清理
+  3.生成Android Proguard混淆字典
+  4.重命名lib下的目录名称\n5.重命名所有文件名
+  6.打包ReleaseApk
+  7.打包IPA测试包
+  9.在临时生成目录中进行执行上述混淆任务并打包''');
   print('输入要运行的任务：');
   var task = stdin.readLineSync();
 
@@ -88,18 +96,27 @@ void _readTaskAndDo(String projectPath, String pubSpaceName) {
       }
     case "6":
       {
-        _runBuildReleaseArmV8Apk(projectPath);
+        _runBuildApk(projectPath);
+        break;
+      }
+    case "7":
+      {
+        _runBuildIpa(projectPath, true);
         break;
       }
     case "9":
       {
-        changeToTempDirAndRun(projectPath, pubSpaceName, (projectPathNew) {
+        changeToTempDirAndRun(projectPath, pubSpaceName,
+            (projectPathNew) async {
+          List<bool> tasks = await _askWhichToBuild();
           _runChangeImageMd5(projectPathNew);
           _proguadImageNameAndClean(projectPathNew);
           _runGenAndroidProguardDict(projectPathNew);
           _runObfuscateAllLibsDirs(projectPathNew, pubSpaceName);
           _runObfuscateAllFileNames(projectPathNew);
-          return _runBuildReleaseArmV8Apk(projectPathNew);
+          await _runBuild(
+              projectPath, projectPathNew, tasks[0], tasks[1], tasks[2]);
+          deleteTempProject(projectPathNew);
         });
         break;
       }
@@ -141,10 +158,46 @@ _runObfuscateAllFileNames(String projectPath) {
   renameAllFileNames(projectPath);
 }
 
-Future<String> _runBuildReleaseArmV8Apk(String projectPath) async {
+Future<List<bool>> _askWhichToBuild() async {
+  print(
+      '输入想要打包类型( 1->apk  2->ipaDev  3->ipaRelease),windows只支持APK!,支持打多个包,(例如:12,将打包apk和ipaDev)');
+  String tasks = stdin.readLineSync() ?? '';
+  if (Platform.isMacOS) {
+    print(
+        "will build apk -> ${tasks.contains('1')} ipadev -> ${tasks.contains('2')} iparelease -> ${tasks.contains('3')}");
+    return [tasks.contains('1'), tasks.contains('2'), tasks.contains('3')];
+  }
+  print("will build apk -> ${tasks.contains('1')}");
+  sleep(Duration(seconds: 3));
+  return [tasks.contains('1'), false, false];
+}
+
+_runBuild(String projectPath, String projectPathTemp, bool buildApk,
+    bool buildIpaDev, bool buildIpaRelease) async {
+  if (buildApk) {
+    String apkPath = await _runBuildApk(projectPathTemp);
+    await transOutputTo(projectPath, projectPathTemp, apkPath);
+  }
+  if (buildIpaDev) {
+    String ipaPath = await _runBuildIpa(projectPathTemp, true);
+    await transOutputTo(projectPath, projectPathTemp, ipaPath);
+  }
+  if (buildIpaRelease) {
+    String ipaPath = await _runBuildIpa(projectPathTemp, false);
+    await transOutputTo(projectPath, projectPathTemp, ipaPath);
+  }
+}
+
+Future<String> _runBuildApk(String projectPath) async {
   print("build apk start...");
   sleep(Duration(seconds: 3));
-  return await buildReleaseApk(projectPath);
+  return buildReleaseApk(projectPath);
+}
+
+Future<String> _runBuildIpa(String projectPath, bool isDev) async {
+  print("build ipa ${isDev ? "dev" : "release"} start...");
+  sleep(Duration(seconds: 3));
+  return buildIPA(projectPath, isDev);
 }
 
 String getArgsPath(List<String> arguments) {

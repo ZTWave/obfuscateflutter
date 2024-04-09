@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:obfuscateflutter/consts.dart';
 import 'package:path/path.dart' as p;
 
 flutterClean(String projectPath) async {
@@ -45,7 +46,13 @@ copy(String oldPath, String newPath) async {
     arg = [oldPath, newPath, '/S'];
   } else if (Platform.isMacOS) {
     cmd = 'cp';
-    arg = ['-R', oldPath + p.separator, newPath + p.separator];
+
+    bool isOutput = outputExtName.contains(getFileExtName(File(oldPath)));
+    arg = [
+      '-R',
+      oldPath + (isOutput ? '' : p.separator),
+      newPath + p.separator
+    ];
   } else {
     cmd = 'cp';
     arg = ['-RT', oldPath, newPath];
