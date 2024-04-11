@@ -9,16 +9,30 @@ Future<String> buildIPA(String path, bool isDev) async {
   // 控制台打印项目目录
   print('项目目录：$path 开始编译 IPA isDev -> $isDev \n');
 
+  //flutter build ipa --release --export-method development
+  List<String> args = [
+    'build',
+    'ipa',
+    '--release',
+  ];
+  if (isDev) {
+    args += [
+      '--export-method development',
+      '--obfuscate',
+      '--split-debug-info=./ob_trace/',
+    ];
+  } else {
+    args += [
+      '--obfuscate',
+      '--split-debug-info=./ob_trace/',
+    ];
+  }
+
+  print('build args -> $args');
+
   final process = await Process.start(
     'flutter',
-    [
-      'build',
-      'ipa',
-      '--release',
-      isDev ? '--export-method development' : '',
-      '--obfuscate',
-      '--split-debug-info=./ob_trace',
-    ],
+    args,
     runInShell: true,
     workingDirectory: path,
     mode: ProcessStartMode.inheritStdio,
