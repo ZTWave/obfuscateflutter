@@ -160,7 +160,7 @@ _runObfuscateAllFileNames(String projectPath) {
 
 Future<List<bool>> _askWhichToBuild() async {
   print(
-      '输入想要打包类型( 1->apk  2->ipaDev  3->ipaRelease),windows只支持APK!,支持打多个包,(例如:12,将打包apk和ipaDev)');
+      '\n输入想要打包类型( 1->apk  2->ipaDev  3->ipaDis )\nwindows只支持APK!,支持打多个包,(例如:12,将打包apk和ipaDev)');
   String tasks = stdin.readLineSync() ?? '';
   if (Platform.isMacOS) {
     print(
