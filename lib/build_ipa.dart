@@ -73,7 +73,7 @@ Future<String> buildIPA(String path, bool isDev) async {
   final resultNameList = [
     appName,
     version,
-    isDev ? 'dev' : 'release',
+    isDev ? 'dev' : 'dis',
     timeStr,
   ].where((element) => element.isNotEmpty).toList();
 
