@@ -19,8 +19,6 @@ Future<String> buildIPA(String path, bool isDev) async {
     args += [
       '--export-method',
       'development'
-      '--obfuscate',
-      '--split-debug-info=./ob_trace/',
     ];
   } else {
     args += [
