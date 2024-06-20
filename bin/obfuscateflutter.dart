@@ -117,12 +117,13 @@ void _readTaskAndDo(String projectPath, String pubSpaceName) {
       {
         changeToTempDirAndRun(projectPath, pubSpaceName,
             (projectPathNew) async {
-          List<bool> tasks = await _askWhichToBuild();
           _runChangeImageMd5(projectPathNew);
           _proguadImageNameAndClean(projectPathNew);
           _runGenAndroidProguardDict(projectPathNew);
           _runObfuscateAllLibsDirs(projectPathNew, pubSpaceName);
           _runObfuscateAllFileNames(projectPathNew);
+          print('!!!混淆任务已经完成!!!');
+          List<bool> tasks = await _askWhichToBuild();
           await _runBuild(projectPath, projectPathNew, tasks[0], tasks[1],
               tasks[2], tasks[3]);
           deleteTempProject(projectPathNew);
