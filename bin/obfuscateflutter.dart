@@ -6,6 +6,7 @@ import 'package:obfuscateflutter/build_aab.dart';
 import 'package:obfuscateflutter/build_apk.dart';
 import 'package:obfuscateflutter/build_ipa.dart';
 import 'package:obfuscateflutter/cmd_utils.dart';
+import 'package:obfuscateflutter/encrypt_string.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
 import 'package:obfuscateflutter/proguard_images.dart';
@@ -64,9 +65,10 @@ void _readTaskAndDo(String projectPath, String pubSpaceName) {
   3.生成Android Proguard混淆字典
   4.重命名lib下的目录名称
   5.重命名所有文件名
-  6.打包Android Apk
-  7.打包Android AAB
-  8.打包IOS IPA测试包
+  6.混淆项目中所有的String (not finish yet!)
+  7.打包Android Apk
+  8.打包Android AAB
+  9.打包IOS IPA测试包
 
   x.在临时生成目录中进行执行上述混淆任务并打包''');
   print('输入要运行的任务：');
@@ -100,15 +102,20 @@ void _readTaskAndDo(String projectPath, String pubSpaceName) {
       }
     case "6":
       {
-        _runBuildApk(projectPath);
+        _encrypetString(projectPath);
         break;
       }
     case "7":
       {
-        _runBuildAab(projectPath);
+        _runBuildApk(projectPath);
         break;
       }
     case "8":
+      {
+        _runBuildAab(projectPath);
+        break;
+      }
+    case "9":
       {
         _runBuildIpa(projectPath, true);
         break;
@@ -166,6 +173,12 @@ _runObfuscateAllFileNames(String projectPath) {
   sleep(Duration(seconds: 3));
   print("start rename lib's child file name and refresh code import");
   renameAllFileNames(projectPath);
+}
+
+_encrypetString(String projectPath) {
+  print('do encrypt strings');
+  encryptStrings(projectPath);
+  print('do encrypt strings finished');
 }
 
 Future<List<bool>> _askWhichToBuild() async {

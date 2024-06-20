@@ -2,14 +2,22 @@ import 'dart:io';
 
 import 'package:obfuscateflutter/consts.dart';
 import 'package:obfuscateflutter/random_key.dart';
+import 'package:obfuscateflutter/yaml_helper.dart';
 import 'package:path/path.dart' as p;
 
 void proguardImages(String projectPath) {
   List<ImageProguardData> imageMapper = List.empty(growable: true);
 
-  Directory assertsDir = Directory(p.join(projectPath, "asserts"));
+  List<Directory> assertsDir = YamlHelper.getAssetsDir(projectPath)
+      .map((String e) => Directory(p.join(projectPath, e)))
+      .toList();
 
-  var fileEles = assertsDir.listSync(recursive: true);
+  List<FileSystemEntity> fileEles = [];
+
+  for (final dir in assertsDir) {
+    fileEles.addAll(dir.listSync(recursive: true));
+  }
+
   List<File> images = List.empty(growable: true);
   for (var element in fileEles) {
     if (element is File) {
@@ -58,6 +66,7 @@ void proguardImages(String projectPath) {
 
   for (int i = 0; i < imageMapper.length; i++) {
     var element = imageMapper[i];
+    print('image file => $element');
     File file = File(p.join(element.path, element.originalName));
     if (!element.used) {
       file.deleteSync();

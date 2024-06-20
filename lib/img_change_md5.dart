@@ -5,12 +5,20 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:obfuscateflutter/consts.dart';
 import 'package:obfuscateflutter/random_key.dart';
+import 'package:obfuscateflutter/yaml_helper.dart';
 import 'package:path/path.dart' as p;
 
 void changeImageMd5(String path) {
-  Directory assertsDir = Directory(p.join(path, "asserts"));
+  List<Directory> assertsDir = YamlHelper.getAssetsDir(path)
+      .map((String e) => Directory(p.join(path, e)))
+      .toList();
 
-  var fileEles = assertsDir.listSync(recursive: true);
+  List<FileSystemEntity> fileEles = [];
+
+  for (final dir in assertsDir) {
+    fileEles.addAll(dir.listSync(recursive: true));
+  }
+
   List<File> images = List.empty(growable: true);
   for (var element in fileEles) {
     if (element is File) {
