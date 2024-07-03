@@ -85,3 +85,20 @@ Future<String> getCurrentPathByShell() async {
 
   return out.replaceAll('\n', '').trim();
 }
+
+Future<void> dartformatFile(String filePath) async {
+  print("run dartfmt on $filePath");
+  final process = await Process.start(
+    'dart',
+    ['format', filePath],
+    mode: ProcessStartMode.inheritStdio,
+    runInShell: true,
+  );
+  final result = await process.exitCode;
+  if (result != 0) {
+    stdout.write('dartfmt failed!');
+    return;
+  }
+  process.kill();
+  print("run dartfmt finished.");
+}

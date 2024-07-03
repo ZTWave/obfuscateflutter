@@ -124,6 +124,7 @@ void _readTaskAndDo(String projectPath, String pubSpaceName) {
       {
         changeToTempDirAndRun(projectPath, pubSpaceName,
             (projectPathNew) async {
+          //_encrypetString(projectPath);
           _runChangeImageMd5(projectPathNew);
           _proguadImageNameAndClean(projectPathNew);
           _runGenAndroidProguardDict(projectPathNew);
