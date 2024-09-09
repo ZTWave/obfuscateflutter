@@ -60,6 +60,21 @@ void proguardImages(String projectPath) {
         codeStr = codeStr.replaceAll(
             "'${imageItem.originalName}'", "'${imageItem.proguardName}'");
       }
+
+      final posableUsage = _getPathFromAsserts(
+          imageItem.path, assertsDir.map((e) => e.path).toList());
+      for (String usage in posableUsage) {
+        if (codeStr.contains("\"$usage\\${imageItem.originalName}\"")) {
+          imageItem.used = true;
+          codeStr = codeStr.replaceAll("\"$usage\\${imageItem.originalName}\"",
+              "\"$usage\\${imageItem.proguardName}\"");
+        }
+        if (codeStr.contains("'$usage\\${imageItem.originalName}'")) {
+          imageItem.used = true;
+          codeStr = codeStr.replaceAll("'$usage\\${imageItem.originalName}'",
+              "'$usage\\${imageItem.proguardName}'");
+        }
+      }
     }
     element.writeAsStringSync(codeStr, flush: true, mode: FileMode.write);
   });
@@ -86,6 +101,24 @@ void _printMapping(List<ImageProguardData> imageMapper) {
       print("remove image ${element.originalName}");
     }
   }
+}
+
+//all path is abslutate path
+List<String> _getPathFromAsserts(
+    String imgParentPath, List<String> assertsPaths) {
+  final posableImageUsages = <String>[];
+  for (String assertsPath in assertsPaths) {
+    final assertsFolderName = assertsPath.split(p.separator).last;
+    final imageParentPathArray = imgParentPath.split(p.separator);
+    var index = imageParentPathArray.indexOf(assertsFolderName);
+    if (index >= 0) {
+      final List<String> pathList =
+          imageParentPathArray.sublist(index - 1).toList(growable: true);
+      pathList.insert(0, assertsFolderName);
+      posableImageUsages.add(p.joinAll(pathList));
+    }
+  }
+  return posableImageUsages;
 }
 
 class ImageProguardData {
