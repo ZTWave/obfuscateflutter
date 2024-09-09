@@ -63,6 +63,9 @@ void proguardImages(String projectPath) {
 
       final posableUsage = _getPathFromAsserts(
           imageItem.path, assertsDir.map((e) => e.path).toList());
+
+      print("find image ${imageItem.originalName} in usages $posableUsage");
+
       for (String usage in posableUsage) {
         if (codeStr.contains("\"$usage\\${imageItem.originalName}\"")) {
           imageItem.used = true;
@@ -108,13 +111,15 @@ List<String> _getPathFromAsserts(
     String imgParentPath, List<String> assertsPaths) {
   final posableImageUsages = <String>[];
   for (String assertsPath in assertsPaths) {
-    final assertsFolderName = assertsPath.split(p.separator).last;
+    final assertsFolderName = assertsPath
+        .split(p.separator)
+        .lastWhere((element) => element.isNotEmpty);
     final imageParentPathArray = imgParentPath.split(p.separator);
     var index = imageParentPathArray.indexOf(assertsFolderName);
     if (index >= 0) {
       final List<String> pathList =
           imageParentPathArray.sublist(index - 1).toList(growable: true);
-      pathList.insert(0, assertsFolderName);
+      //pathList.insert(0, assertsFolderName);
       posableImageUsages.add(p.joinAll(pathList));
     }
   }
