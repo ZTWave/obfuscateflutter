@@ -64,18 +64,21 @@ void proguardImages(String projectPath) {
       final posableUsage = _getPathFromAsserts(
           imageItem.path, assertsDir.map((e) => e.path).toList());
 
-      print("find image ${imageItem.originalName} in usages $posableUsage");
-
       for (String usage in posableUsage) {
-        if (codeStr.contains("\"$usage\\${imageItem.originalName}\"")) {
+        final doubleUsage = "\"$usage/${imageItem.originalName}\"";
+        if (codeStr.contains(doubleUsage)) {
           imageItem.used = true;
-          codeStr = codeStr.replaceAll("\"$usage\\${imageItem.originalName}\"",
-              "\"$usage\\${imageItem.proguardName}\"");
+          final old = "\"$usage/${imageItem.originalName}\"";
+          final nww = "\"$usage/${imageItem.proguardName}\"";
+          codeStr = codeStr.replaceAll(old, nww);
         }
-        if (codeStr.contains("'$usage\\${imageItem.originalName}'")) {
+
+        final singleUsage = "'$usage/${imageItem.originalName}'";
+        if (codeStr.contains(singleUsage)) {
           imageItem.used = true;
-          codeStr = codeStr.replaceAll("'$usage\\${imageItem.originalName}'",
-              "'$usage\\${imageItem.proguardName}'");
+          final old = "'$usage/${imageItem.originalName}'";
+          final nww = "'$usage/${imageItem.proguardName}'";
+          codeStr = codeStr.replaceAll(old, nww);
         }
       }
     }
@@ -114,15 +117,19 @@ List<String> _getPathFromAsserts(
     final assertsFolderName = assertsPath
         .split(p.separator)
         .lastWhere((element) => element.isNotEmpty);
+
     final imageParentPathArray = imgParentPath.split(p.separator);
+
     var index = imageParentPathArray.indexOf(assertsFolderName);
+
     if (index >= 0) {
       final List<String> pathList =
           imageParentPathArray.sublist(index - 1).toList(growable: true);
       //pathList.insert(0, assertsFolderName);
-      posableImageUsages.add(p.joinAll(pathList));
+      posableImageUsages.add(pathList.join("/"));
     }
   }
+
   return posableImageUsages;
 }
 
