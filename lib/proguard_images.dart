@@ -22,7 +22,9 @@ void proguardImages(String projectPath) {
   for (var element in fileEles) {
     if (element is File) {
       if (imagesExtNames.contains(getFileExtName(element))) {
-        images.add(element);
+        if (images.where((e) => e.path == element.path).isEmpty) {
+          images.add(element);
+        }
       }
     }
   }

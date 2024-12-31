@@ -113,7 +113,38 @@ Future<void> _formatDartFile(String filePath) async {
 
   Log.log('ast result --------------------------------');
 
-  final visitor = StringEleVisitor();
+  //String astSource = ast.toSource();
 
-  ast.visitChildren(visitor);
+  //Log.log("ast -> $astSource");
+
+  // astSource = astSource.replaceAllMapped(
+  //   ';',
+  //   (match) {
+  //     return ';\n';
+  //   },
+  // );
+
+  //Log.log("ast -> \n $astSource");
+
+  //File(filePath).writeAsStringSync(astSource);
+
+  // for (SyntacticEntity element in ast.childEntities) {
+  //   Log.log('child 1 -> $element');
+
+  //   if (element is FieldDeclaration) {
+  //     Log.log('child 2 is field');
+  //   }
+
+  //   if (element is ClassDeclaration) {
+  //     Log.log('child 3 is class');
+
+  //     var clazzChild = element.childEntities;
+
+  //     for (var field in clazzChild) {
+  //       Log.log('child 4 is field -> $field ');
+  //     }
+  //   }
+  // }
+
+  ast.accept(StringEleVisitor());
 }

@@ -45,11 +45,20 @@ renameAllFileNames(String projectPath) {
 
     for (String codeLine in originContent) {
       String obCodeLine = codeLine;
-      if (obCodeLine.startsWith("import") || obCodeLine.startsWith("export")) {
+      if (obCodeLine.startsWith("import") ||
+          obCodeLine.startsWith("export") ||
+          obCodeLine.startsWith('part')) {
         obMap.forEach((obFileNameMap) {
           if (obCodeLine.contains("/" + obFileNameMap.a + '.dart') ||
               obCodeLine.contains("\'" + obFileNameMap.a + '.dart') ||
               obCodeLine.contains("\"" + obFileNameMap.a + '.dart')) {
+            print("replacing code => ${obCodeLine}");
+            print(
+                'replace file $file content ${obFileNameMap.a + '.dart'} => ${obFileNameMap.b + '.dart'}');
+            obCodeLine = obCodeLine.replaceAll(
+                obFileNameMap.a + '.dart', obFileNameMap.b + '.dart');
+          }
+          if (obCodeLine.contains('part \'${obFileNameMap.a}\'') ) {
             print("replacing code => ${obCodeLine}");
             print(
                 'replace file $file content ${obFileNameMap.a + '.dart'} => ${obFileNameMap.b + '.dart'}');

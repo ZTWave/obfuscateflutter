@@ -5,7 +5,6 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:obfuscateflutter/log.dart';
 
 class StringEleVisitor extends RecursiveAstVisitor<void> {
-
   @override
   void visitImportDirective(ImportDirective node) {
     Log.log('field -> $node');
@@ -47,6 +46,8 @@ class StringEleVisitor extends RecursiveAstVisitor<void> {
       Log.log('SKIP! has center InterpolationExpression');
       return super.visitVariableDeclaration(node);
     }
+
+    
 
     // node.parent?.accept();
     super.visitVariableDeclaration(node);
