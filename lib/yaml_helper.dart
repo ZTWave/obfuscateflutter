@@ -19,7 +19,7 @@ class YamlHelper {
     final yamlMap = loadYaml(_getYamlContent(projectPath));
     return (yamlMap['flutter']['assets'] as YamlList)
         .nodes
-        .map((element) => element.value.toString().replaceAll('/', '\\'))
+        .map((element) => p.joinAll(element.value.toString().split('/')))
         .toList();
   }
 }
