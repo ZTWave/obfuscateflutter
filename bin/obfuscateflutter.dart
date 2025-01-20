@@ -20,6 +20,15 @@ void main(List<String> arguments) async {
   print('Hello, Creeper!');
   print(
       'brfore you start this project change all relative import to start with package import!');
+  print('\n');
+  final process = await Process.start(
+    'flutter',
+    ['--version'],
+    runInShell: true,
+    mode: ProcessStartMode.inheritStdio,
+  );
+  await process.exitCode;
+  print('\n');
 
   String projectPath = '';
   var argPath = getArgsPath(arguments);
