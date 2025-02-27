@@ -1,5 +1,6 @@
 import 'dart:core';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:args/args.dart';
 import 'package:obfuscateflutter/build_aab.dart';
@@ -63,10 +64,14 @@ void main(List<String> arguments) async {
 
   print('flutter project pubspec name is $pubSpaceName');
 
-  _readTaskAndDo(project.path, pubSpaceName);
+  _readTaskAndDo(project.path, pubSpaceName, getDefineArg(arguments));
 }
 
-void _readTaskAndDo(String projectPath, String pubSpaceName) {
+void _readTaskAndDo(
+  String projectPath,
+  String pubSpaceName,
+  String dartDefineArg,
+) {
   print(r'''
   please select task to run
   1.修改图片MD5
@@ -116,17 +121,17 @@ void _readTaskAndDo(String projectPath, String pubSpaceName) {
       }
     case "7":
       {
-        _runBuildApk(projectPath);
+        _runBuildApk(projectPath, dartDefineArg);
         break;
       }
     case "8":
       {
-        _runBuildAab(projectPath);
+        _runBuildAab(projectPath, dartDefineArg);
         break;
       }
     case "9":
       {
-        _runBuildIpa(projectPath, true);
+        _runBuildIpa(projectPath, true, dartDefineArg);
         break;
       }
     case "x":
@@ -142,14 +147,14 @@ void _readTaskAndDo(String projectPath, String pubSpaceName) {
           print('!!!混淆任务已经完成!!!');
           List<bool> tasks = await _askWhichToBuild();
           await _runBuild(projectPath, projectPathNew, tasks[0], tasks[1],
-              tasks[2], tasks[3]);
+              tasks[2], tasks[3], dartDefineArg);
           deleteTempProject(projectPathNew);
         });
         break;
       }
     default:
       {
-        _readTaskAndDo(projectPath, pubSpaceName);
+        _readTaskAndDo(projectPath, pubSpaceName, dartDefineArg);
       }
   }
 }
@@ -210,46 +215,66 @@ Future<List<bool>> _askWhichToBuild() async {
   return [tasks.contains('1'), tasks.contains('2'), false, false];
 }
 
-_runBuild(String projectPath, String projectPathTemp, bool buildApk,
-    bool buildAab, bool buildIpaDev, bool buildIpaRelease) async {
+_runBuild(
+    String projectPath,
+    String projectPathTemp,
+    bool buildApk,
+    bool buildAab,
+    bool buildIpaDev,
+    bool buildIpaRelease,
+    String dartDefineArg) async {
   if (buildApk) {
-    String apkPath = await _runBuildApk(projectPathTemp);
+    String apkPath = await _runBuildApk(projectPathTemp, dartDefineArg);
     await transOutputTo(projectPath, projectPathTemp, apkPath);
   }
   if (buildAab) {
-    String aabPath = await _runBuildAab(projectPathTemp);
+    String aabPath = await _runBuildAab(projectPathTemp, dartDefineArg);
     await transOutputTo(projectPath, projectPathTemp, aabPath);
   }
   if (buildIpaDev) {
-    String ipaPath = await _runBuildIpa(projectPathTemp, true);
+    String ipaPath = await _runBuildIpa(projectPathTemp, true, dartDefineArg);
     await transOutputTo(projectPath, projectPathTemp, ipaPath);
   }
   if (buildIpaRelease) {
-    String ipaPath = await _runBuildIpa(projectPathTemp, false);
+    String ipaPath = await _runBuildIpa(projectPathTemp, false, dartDefineArg);
     await transOutputTo(projectPath, projectPathTemp, ipaPath);
   }
 }
 
-Future<String> _runBuildApk(String projectPath) async {
+Future<String> _runBuildApk(String projectPath, String dartDefineArg) async {
   print("build apk start...");
   sleep(Duration(seconds: 3));
-  return buildReleaseApk(projectPath);
+  return buildReleaseApk(projectPath, dartDefineArg);
 }
 
-Future<String> _runBuildAab(String projectPath) async {
+Future<String> _runBuildAab(String projectPath, String dartDefineArg) async {
   print("build aab start...");
   sleep(Duration(seconds: 3));
-  return buildReleaseAab(projectPath);
+  return buildReleaseAab(projectPath, dartDefineArg);
 }
 
-Future<String> _runBuildIpa(String projectPath, bool isDev) async {
+Future<String> _runBuildIpa(
+    String projectPath, bool isDev, String dartDefineArg) async {
   print("build ipa ${isDev ? "dev" : "release"} start...");
   sleep(Duration(seconds: 3));
-  return buildIPA(projectPath, isDev);
+  return buildIPA(projectPath, isDev, dartDefineArg);
 }
 
+final parser = ArgParser(allowTrailingOptions: true)
+  ..addOption("dir", abbr: 'd')
+  ..addMultiOption('dart-define-from-file');
+
 String getArgsPath(List<String> arguments) {
-  final parser = ArgParser()..addOption("dir", abbr: 'd');
   ArgResults argResults = parser.parse(arguments);
   return argResults["dir"].toString();
+}
+
+String getDefineArg(List<String> arguments) {
+  ArgResults argResults = parser.parse(arguments);
+  final args = argResults['dart-define-from-file'];
+  if (args is List<String>) {
+    return args.firstOrNull ?? '';
+  } else {
+    return '';
+  }
 }

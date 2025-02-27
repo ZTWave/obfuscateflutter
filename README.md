@@ -6,10 +6,12 @@
 ⚠️ Windows 和 MacOS 上测试通过 ，
 ⚠️ 运行工具前将所有的 `import`,`export` 替换为 `package` 开头的引用
 
-### 如何使用 
+### 如何使用
 
 1. 首先运行  `dart pub get`
 
-2. 执行命令 `dart run ./bin/obfuscateflutter.dart -d <项目路径>`  
+2. 执行命令 `dart run ./bin/obfuscateflutter.dart -d <项目路径>`v
 
-3. 按照程序提示选择对应操作即可。
+3. 可选参数 `--dart-define-from-file=define.json` 指定 `dart define json` 路径  可参照 [此处](https://codewithandrea.com/tips/dart-define-from-file-env-json/) 进行使用
+
+4. 按照程序提示选择对应操作即可。

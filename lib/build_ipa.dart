@@ -5,7 +5,7 @@ import 'package:obfuscateflutter/consts.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
-Future<String> buildIPA(String path, bool isDev) async {
+Future<String> buildIPA(String path, bool isDev, String dartDefineArg) async {
   // 控制台打印项目目录
   print('项目目录：$path 开始编译 IPA isDev -> $isDev \n');
 
@@ -16,15 +16,15 @@ Future<String> buildIPA(String path, bool isDev) async {
     '--release',
   ];
   if (isDev) {
-    args += [
-      '--export-method',
-      'development'
-    ];
+    args += ['--export-method', 'development'];
   } else {
     args += [
       '--obfuscate',
       '--split-debug-info=./ob_trace/',
     ];
+  }
+  if (dartDefineArg.isNotEmpty) {
+    args += ['--dart-define-from-file=$dartDefineArg'];
   }
 
   print('build args -> $args');

@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
-Future<String> buildReleaseAab(String path) async {
+Future<String> buildReleaseAab(String path, String dartDefineArg) async {
   // 控制台打印项目目录
   print('项目目录：$path 开始编译 AAB\n');
 
@@ -16,6 +16,9 @@ Future<String> buildReleaseAab(String path) async {
       //'--verbose',
       '--obfuscate',
       '--split-debug-info=./ob_trace',
+      if (dartDefineArg.isNotEmpty) ...[
+        '--dart-define-from-file=$dartDefineArg'
+      ]
     ],
     runInShell: true,
     workingDirectory: path,

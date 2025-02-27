@@ -4,20 +4,26 @@ import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
-Future<String> buildReleaseApk(String path) async {
+Future<String> buildReleaseApk(String path, String dartDefineArg) async {
   // 控制台打印项目目录
   print('项目目录：$path 开始编译 APK\n');
 
+  var arg = [
+    'build',
+    'apk',
+    //'--verbose',
+    '--obfuscate',
+    '--split-debug-info=./ob_trace',
+    '--split-per-abi',
+  ];
+
+  if (dartDefineArg.isNotEmpty) {
+    arg.add('--dart-define-from-file=$dartDefineArg');
+  }
+
   final process = await Process.start(
     'flutter',
-    [
-      'build',
-      'apk',
-      //'--verbose',
-      '--obfuscate',
-      '--split-debug-info=./ob_trace',
-      '--split-per-abi'
-    ],
+    arg,
     runInShell: true,
     workingDirectory: path,
     mode: ProcessStartMode.inheritStdio,
