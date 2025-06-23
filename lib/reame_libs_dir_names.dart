@@ -107,6 +107,7 @@ extension ObfuscateFile on File {
   File obfuscate(List<Pair<String, String>> map, String pubSpaceName) {
     final importPrefix = "import 'package:$pubSpaceName";
     final importPrefixQuotedTwo = "export 'package:$pubSpaceName";
+    final importPrefixQuoted3 = "part ";
     var lines = readAsLinesSync();
     for (int i = 0; i < lines.length; i++) {
       var line = lines[i];
@@ -119,6 +120,8 @@ extension ObfuscateFile on File {
         var old = '$importPrefix${obEntity.a.replaceAll(p.separator, "/")}/';
         var old2 =
             '$importPrefixQuotedTwo${obEntity.a.replaceAll(p.separator, "/")}/';
+        var old3 =
+            '$importPrefixQuoted3${obEntity.a.replaceAll(p.separator, "/")}/';
         if (line.startsWith(old)) {
           var nen = '$importPrefix${obEntity.b.replaceAll(p.separator, "/")}/';
           print('replace $old -> $nen');
@@ -129,6 +132,12 @@ extension ObfuscateFile on File {
               '$importPrefixQuotedTwo${obEntity.b.replaceAll(p.separator, "/")}/';
           print('replace $old2 -> $nen');
           line = line.replaceAll(old2, nen);
+        }
+        if (line.startsWith(old3)) {
+          var nen =
+              '$importPrefixQuoted3${obEntity.b.replaceAll(p.separator, "/")}/';
+          print('replace $old3 -> $nen');
+          line = line.replaceAll(old3, nen);
         }
       });
       lines[i] = line;
