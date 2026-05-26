@@ -1,6 +1,5 @@
 import 'dart:core';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:args/args.dart';
 import 'package:obfuscateflutter/build_aab.dart';
@@ -83,6 +82,7 @@ void _readTaskAndDo(
   7.打包Android Apk
   8.打包Android AAB
   9.打包IOS IPA测试包
+  10.恢复项目中已混淆的String
 
   x.在临时生成目录中进行执行上述混淆任务并打包''');
   print('输入要运行的任务：');
@@ -132,6 +132,11 @@ void _readTaskAndDo(
     case "9":
       {
         _runBuildIpa(projectPath, true, dartDefineArg);
+        break;
+      }
+    case "10":
+      {
+        _decryptString(projectPath);
         break;
       }
     case "x":
@@ -194,6 +199,12 @@ _encrypetString(String projectPath) {
   print('do encrypt strings');
   encryptStrings(projectPath);
   print('do encrypt strings finished');
+}
+
+_decryptString(String projectPath) {
+  print('do decrypt strings');
+  decryptStrings(projectPath);
+  print('do decrypt strings finished');
 }
 
 Future<List<bool>> _askWhichToBuild() async {
