@@ -1,55 +1,90 @@
 import 'package:analyzer/dart/ast/ast.dart';
-import 'package:analyzer/dart/ast/token.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
-import 'package:analyzer/dart/element/type.dart';
-import 'package:obfuscateflutter/log.dart';
+import 'package:obfuscateflutter/utils/string_crypt_utils.dart';
 
-class StringEleVisitor extends RecursiveAstVisitor<void> {
+class StringReplacementData {
+  final int offset;
+  final int end;
+  final String replacement;
+  const StringReplacementData(this.offset, this.end, this.replacement);
+}
+
+class StringEncryptVisitor extends RecursiveAstVisitor<void> {
+  final String sep;
+  final int sek;
+  final String funcName;
+
+  final List<StringReplacementData> replacements = [];
+
+  StringEncryptVisitor(this.sep, this.sek, this.funcName);
+
   @override
-  void visitImportDirective(ImportDirective node) {
-    Log.log('field -> $node');
-    super.visitImportDirective(node);
+  void visitSimpleStringLiteral(SimpleStringLiteral node) {
+    if (_isWrappedInDes(node)) return;
+    if (_isInDirective(node)) return;
+    if (_isInAnnotation(node)) return;
+    if (_isInConstContext(node)) return;
+
+    final value = node.value;
+    if (value.isEmpty) return;
+
+    final encrypted = StringCryptUtils.encrypt(value, sek);
+    final replacement = '$funcName("$sep$encrypted")';
+    replacements.add(StringReplacementData(node.offset, node.end, replacement));
+
+    super.visitSimpleStringLiteral(node);
   }
 
-  @override
-  visitFieldDeclaration(FieldDeclaration node) {
-    Log.log('field -> $node');
-
-    /*final tokens = node.childEntities.whereType<Token>();
-
-    if (tokens.isNotEmpty) {
-      Log.log('find tokens -> $tokens');
-
-      if (tokens.contains(Keyword.CONST)) {
-        Log.log('find tokens -> $tokens is Const skip');
-        return super.visitFieldDeclaration(node);
+  bool _isWrappedInDes(AstNode node) {
+    final parent = node.parent;
+    if (parent is ArgumentList) {
+      final grandparent = parent.parent;
+      if (grandparent is MethodInvocation) {
+        return grandparent.methodName.name == funcName;
       }
-    } */
-
-    return super.visitFieldDeclaration(node);
+    }
+    return false;
   }
 
-  @override
-  void visitVariableDeclaration(VariableDeclaration node) {
-    Log.log('variable -> $node');
-    Log.log('parent -> ${node.parent}');
-
-    final isConst = node.isConst;
-
-    Log.log('SKIP! node is const -> $isConst}');
-    if (isConst) {
-      return super.visitVariableDeclaration(node);
+  bool _isInDirective(AstNode node) {
+    AstNode? current = node;
+    while (current != null) {
+      if (current is ImportDirective ||
+          current is ExportDirective ||
+          current is PartDirective) {
+        return true;
+      }
+      current = current.parent;
     }
-    final nodeInitializer = node.initializer;
-    final niChild = nodeInitializer?.childEntities;
-    if (niChild?.whereType<InterpolationExpression>().isNotEmpty ?? false) {
-      Log.log('SKIP! has center InterpolationExpression');
-      return super.visitVariableDeclaration(node);
+    return false;
+  }
+
+  bool _isInAnnotation(AstNode node) {
+    AstNode? current = node;
+    while (current != null) {
+      if (current is Annotation) {
+        return true;
+      }
+      current = current.parent;
     }
+    return false;
+  }
 
-    
-
-    // node.parent?.accept();
-    super.visitVariableDeclaration(node);
+  bool _isInConstContext(AstNode node) {
+    AstNode? current = node;
+    while (current != null) {
+      if (current is VariableDeclaration && current.isConst) {
+        return true;
+      }
+      if (current is InstanceCreationExpression &&
+          current.keyword?.lexeme == 'const') {
+        return true;
+      }
+      if (current is TypedLiteral && current.constKeyword != null) {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
   }
 }

@@ -1,150 +1,167 @@
 import 'dart:io';
 import 'dart:math';
-import 'package:analyzer/dart/ast/syntactic_entity.dart';
-import 'package:analyzer/dart/ast/token.dart';
-import 'package:analyzer/dart/element/element.dart';
-import 'package:obfuscateflutter/cmd_utils.dart';
-import 'package:obfuscateflutter/consts.dart';
+
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
 import 'package:obfuscateflutter/log.dart';
 import 'package:obfuscateflutter/utils/string_ele_visitor.dart';
 import 'package:obfuscateflutter/yaml_helper.dart';
 import 'package:path/path.dart' as p;
-import 'package:yaml/yaml.dart';
-import 'package:analyzer/dart/analysis/utilities.dart';
-import 'package:analyzer/dart/analysis/features.dart';
-import 'package:analyzer/dart/ast/ast.dart';
 
-final String defaultStringFile = p.join('lib', 'common', 'strings.dart');
 final String defaultStringKeyStoreFile = p.join('lib', 'stren_arg.dart');
-
 final String defaultStringKeyName = 'SEK';
 final String defaultStringPrefixName = 'SEP';
-
 final String obfStringFuncName = 'des';
 
-void encryptStrings(String projectPath) async {
-  //Directory libDir = Directory(p.join(projectPath, "lib"));
-
-  File stringFile = File(p.join(projectPath, defaultStringFile));
-  if (!stringFile.existsSync()) {
-    Log.log('ERROR : string file -> $stringFile not exists');
+void encryptStrings(String projectPath) {
+  final libDir = Directory(p.join(projectPath, 'lib'));
+  if (!libDir.existsSync()) {
+    Log.log('ERROR: lib directory not found in $projectPath');
     exit(-1);
   }
-  Log.log('serarch string in this file -> $stringFile');
 
-  /* File stringCryptStoreFile =
-      File(p.join(projectPath, defaultStringKeyStoreFile));
-  if (!stringCryptStoreFile.existsSync()) {
-    Log.log(
-        'ERROR : string crypt store file -> $stringCryptStoreFile not exists');
+  final pubName = YamlHelper.getPubSpecName(projectPath);
+  if (pubName.isEmpty) {
+    Log.log('ERROR: cannot read pubspec name');
     exit(-1);
   }
-  Log.log(
-      'serarch string crypt prefix and encrypt key in this file -> $stringCryptStoreFile');
 
-  final sep = _readSep(stringCryptStoreFile);
-  final sek = _readSek(stringCryptStoreFile);
-  Log.log('string crypt prefix sep -> $sep crypt key -> $sek');
+  // 1. Setup key store file: read existing or generate new
+  final keyFile = File(p.join(projectPath, defaultStringKeyStoreFile));
 
-  if (sep.isEmpty || sek.isEmpty) {
-    Log.log('string crypt prefix sep -> $sep crypt key -> $sek is empty');
-    exit(-1);
-  } */
+  String sep;
+  int sek;
 
-  //format strings file content
-  await _formatDartFile(stringFile.path);
-}
+  if (keyFile.existsSync()) {
+    sep = _readSep(keyFile);
+    sek = int.tryParse(_readSek(keyFile)) ?? 0;
 
-String _readSep(File stroreFile) {
-  final fileLines = stroreFile.readAsLinesSync();
-  for (String line in fileLines) {
-    if (line.contains(defaultStringPrefixName)) {
-      String split;
-      if (line.contains('\'')) {
-        split = '\'';
-      } else {
-        split = '"';
-      }
-      int start = line.indexOf(split);
-      int end = line.lastIndexOf(split);
-      return line.substring(start + 1, end);
+    if (sep.isEmpty || sek <= 0) {
+      Log.log('ERROR: $defaultStringKeyStoreFile exists but SEP/SEK could not be read');
+      exit(-1);
     }
-  }
-  return '';
-}
 
-String _readSek(File stroreFile) {
-  final fileLines = stroreFile.readAsLinesSync();
-  for (String line in fileLines) {
-    if (line.contains(defaultStringKeyName)) {
-      RegExp regex = RegExp(r'\d+');
-      Match? match = regex.firstMatch(line);
-      return match?.group(0) ?? '';
+    final existingContent = keyFile.readAsStringSync();
+    if (!existingContent.contains('String $obfStringFuncName(')) {
+      Log.log('$defaultStringKeyStoreFile missing des() function, regenerating...');
+      _writeKeyStoreFile(keyFile, sep, sek);
     }
+  } else {
+    sep = _genRandomSep();
+    sek = _genRandomSek();
+    _writeKeyStoreFile(keyFile, sep, sek);
   }
-  return '';
+
+  Log.log('SEP = $sep, SEK = $sek (store: $defaultStringKeyStoreFile)');
+
+  // 2. Collect all .dart files in lib/
+  final keyFilePath = keyFile.path;
+  final dartFiles = libDir
+      .listSync(recursive: true)
+      .whereType<File>()
+      .where((f) => f.path.endsWith('.dart'))
+      .where((f) => !f.path.endsWith('.g.dart'))
+      .where((f) => !f.path.endsWith('.freezed.dart'))
+      .where((f) => f.path != keyFilePath)
+      .toList();
+
+  Log.log('Found ${dartFiles.length} .dart files to process');
+
+  final importLine = "import 'package:$pubName/stren_arg.dart';";
+
+  for (final file in dartFiles) {
+    _processFile(file, sep, sek, importLine);
+  }
+
+  Log.log('String encryption complete.');
 }
 
-String _getPubSpecName(String projectPath) {
-  final file = File(p.join(projectPath, "pubspec.yaml"));
-  final fileContent = file.readAsStringSync();
-  final yamlMap = loadYaml(fileContent);
+void _processFile(File file, String sep, int sek, String importLine) {
+  final source = file.readAsStringSync();
 
-  return yamlMap['name'].toString();
+  // Skip if import already exists — prevents duplicate imports on re-run
+  final hasImport = source.contains('stren_arg.dart');
+
+  CompilationUnit unit;
+  try {
+    unit = parseString(content: source).unit;
+  } catch (e) {
+    Log.log('  WARN: cannot parse ${file.path}, skipping ($e)');
+    return;
+  }
+
+  final visitor = StringEncryptVisitor(sep, sek, obfStringFuncName);
+  unit.accept(visitor);
+
+  if (visitor.replacements.isEmpty) return;
+
+  // Apply replacements end-to-start to preserve offsets
+  String modified = source;
+  final sorted = visitor.replacements..sort((a, b) => b.offset.compareTo(a.offset));
+  for (final rep in sorted) {
+    modified = modified.replaceRange(rep.offset, rep.end, rep.replacement);
+  }
+
+  // Add import if not already present
+  if (!hasImport) {
+    modified = _insertImport(modified, importLine, unit);
+  }
+
+  file.writeAsStringSync(modified);
+  Log.log('  ${file.path}: encrypted ${visitor.replacements.length} strings');
 }
 
-_matchAllStrings(String fileContent) {
-  RegExp exp = RegExp(r'"([^"\\]*(?:\\.[^"\\]*)*)"');
+String _insertImport(String source, String importLine, CompilationUnit unit) {
+  final directives = unit.directives;
+  if (directives.isNotEmpty) {
+    final insertPos = directives.last.end;
+    return '${source.substring(0, insertPos)}\n$importLine${source.substring(insertPos)}';
+  }
+  return '$importLine\n$source';
+}
 
-  Iterable<Match> matches = exp.allMatches(fileContent);
+String _readSep(File storeFile) {
+  final content = storeFile.readAsStringSync();
+  // Match single-quoted
+  final m1 = RegExp(r"const String SEP\s*=\s*'([^']*)'").firstMatch(content);
+  if (m1 != null) return m1.group(1)!;
+  // Match double-quoted
+  final m2 = RegExp(r'const String SEP\s*=\s*"([^"]*)"').firstMatch(content);
+  return m2?.group(1) ?? '';
+}
 
-  for (Match match in matches) {
-    String extractedString = match.group(1)!;
-    print(extractedString);
+String _readSek(File storeFile) {
+  final content = storeFile.readAsStringSync();
+  final match = RegExp(r'const int SEK\s*=\s*(\d+)').firstMatch(content);
+  return match?.group(1) ?? '';
+}
+
+void _writeKeyStoreFile(File file, String sep, int sek) {
+  file.writeAsStringSync('''
+// Auto-generated by obfuscateflutter -- do not edit manually.
+import 'dart:convert';
+
+const String $defaultStringPrefixName = '$sep';
+const int $defaultStringKeyName = $sek;
+
+String $obfStringFuncName(String s) {
+  if (!s.startsWith($defaultStringPrefixName)) return s;
+  try {
+    final encoded = s.substring($defaultStringPrefixName.length);
+    final shifted = base64.decode(encoded);
+    final bytes = shifted.map((b) => (b - $defaultStringKeyName + 256) % 256).toList();
+    return utf8.decode(bytes);
+  } catch (_) {
+    return s;
   }
 }
-
-Future<void> _formatDartFile(String filePath) async {
-  await dartformatFile(filePath);
-
-  var content = File(filePath).readAsStringSync();
-
-  CompilationUnit ast = parseString(content: content).unit;
-
-  Log.log('ast result --------------------------------');
-
-  //String astSource = ast.toSource();
-
-  //Log.log("ast -> $astSource");
-
-  // astSource = astSource.replaceAllMapped(
-  //   ';',
-  //   (match) {
-  //     return ';\n';
-  //   },
-  // );
-
-  //Log.log("ast -> \n $astSource");
-
-  //File(filePath).writeAsStringSync(astSource);
-
-  // for (SyntacticEntity element in ast.childEntities) {
-  //   Log.log('child 1 -> $element');
-
-  //   if (element is FieldDeclaration) {
-  //     Log.log('child 2 is field');
-  //   }
-
-  //   if (element is ClassDeclaration) {
-  //     Log.log('child 3 is class');
-
-  //     var clazzChild = element.childEntities;
-
-  //     for (var field in clazzChild) {
-  //       Log.log('child 4 is field -> $field ');
-  //     }
-  //   }
-  // }
-
-  ast.accept(StringEleVisitor());
+''');
 }
+
+String _genRandomSep() {
+  const chars = 'AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz';
+  final rand = Random();
+  return List.generate(3, (_) => chars[rand.nextInt(chars.length)]).join();
+}
+
+int _genRandomSek() => Random().nextInt(255) + 1;

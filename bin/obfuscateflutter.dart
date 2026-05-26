@@ -79,7 +79,7 @@ void _readTaskAndDo(
   3.生成Android Proguard混淆字典
   4.重命名lib下的目录名称
   5.重命名所有文件名
-  6.混淆项目中所有的String (not finish yet!)
+  6.混淆项目中所有的String
   7.打包Android Apk
   8.打包Android AAB
   9.打包IOS IPA测试包
