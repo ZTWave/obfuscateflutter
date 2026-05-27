@@ -80,7 +80,7 @@ void _readTaskAndDo(
   6.打包Android AAB
   7.打包IOS IPA测试包
   8.恢复项目中已混淆的String
-  9.统一混淆（AST方案：文件重命名+字符串加密+混淆文档）
+  9.统一混淆（AST方案：文件/目录重命名+混淆文档）
 
   x.在临时生成目录中进行执行上述混淆任务并打包''');
   print('输入要运行的任务：');
@@ -187,7 +187,7 @@ _decryptString(String projectPath) {
 }
 
 _runUnifiedObfuscation(String projectPath) {
-  print('do unified obfuscation (AST-based file rename + string encryption)');
+  print('do unified obfuscation (AST-based file and directory rename)');
   runUnifiedObfuscation(projectPath);
   print('do unified obfuscation finished');
 }
