@@ -1,6 +1,6 @@
 import 'dart:io';
 
-const imagesExtNames = ['.png', '.webp', '.jpg'];
+const imagesExtNames = ['.png', '.webp', '.jpg', '.jpeg'];
 
 const outputExtName = ['.ipa', '.apk'];
 
