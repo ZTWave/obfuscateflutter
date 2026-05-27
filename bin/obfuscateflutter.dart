@@ -10,9 +10,8 @@ import 'package:obfuscateflutter/encrypt_string.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
 import 'package:obfuscateflutter/proguard_images.dart';
-import 'package:obfuscateflutter/reame_libs_dir_names.dart';
-import 'package:obfuscateflutter/rename_files_name.dart';
 import 'package:obfuscateflutter/temp_proj_utils.dart';
+import 'package:obfuscateflutter/unified_obfuscator.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
@@ -76,13 +75,12 @@ void _readTaskAndDo(
   1.修改图片MD5
   2.混淆图片名称并清理
   3.生成Android Proguard混淆字典
-  4.重命名lib下的目录名称
-  5.重命名所有文件名
-  6.混淆项目中所有的String
-  7.打包Android Apk
-  8.打包Android AAB
-  9.打包IOS IPA测试包
-  10.恢复项目中已混淆的String
+  4.混淆项目中所有的String
+  5.打包Android Apk
+  6.打包Android AAB
+  7.打包IOS IPA测试包
+  8.恢复项目中已混淆的String
+  9.统一混淆（AST方案：文件重命名+字符串加密+混淆文档）
 
   x.在临时生成目录中进行执行上述混淆任务并打包''');
   print('输入要运行的任务：');
@@ -106,49 +104,42 @@ void _readTaskAndDo(
       }
     case "4":
       {
-        _runObfuscateAllLibsDirs(projectPath, pubSpaceName);
+        _encrypetString(projectPath);
         break;
       }
     case "5":
       {
-        _runObfuscateAllFileNames(projectPath);
+        _runBuildApk(projectPath, dartDefineArg);
         break;
       }
     case "6":
       {
-        _encrypetString(projectPath);
+        _runBuildAab(projectPath, dartDefineArg);
         break;
       }
     case "7":
       {
-        _runBuildApk(projectPath, dartDefineArg);
+        _runBuildIpa(projectPath, true, dartDefineArg);
         break;
       }
     case "8":
       {
-        _runBuildAab(projectPath, dartDefineArg);
+        _decryptString(projectPath);
         break;
       }
     case "9":
       {
-        _runBuildIpa(projectPath, true, dartDefineArg);
-        break;
-      }
-    case "10":
-      {
-        _decryptString(projectPath);
+        _runUnifiedObfuscation(projectPath);
         break;
       }
     case "x":
       {
         changeToTempDirAndRun(projectPath, pubSpaceName,
             (projectPathNew) async {
-          //_encrypetString(projectPath);
           _runChangeImageMd5(projectPathNew);
           _proguadImageNameAndClean(projectPathNew);
           _runGenAndroidProguardDict(projectPathNew);
-          _runObfuscateAllLibsDirs(projectPathNew, pubSpaceName);
-          _runObfuscateAllFileNames(projectPathNew);
+          _runUnifiedObfuscation(projectPathNew);
           print('!!!混淆任务已经完成!!!');
           List<bool> tasks = await _askWhichToBuild();
           await _runBuild(projectPath, projectPathNew, tasks[0], tasks[1],
@@ -183,18 +174,6 @@ _runGenAndroidProguardDict(String projectPath) {
   genAndroidProguardDict(projectPath);
 }
 
-_runObfuscateAllLibsDirs(String projectPath, String pubSpaceName) {
-  sleep(Duration(seconds: 3));
-  print("start rename lib's child folders name and refresh code import");
-  reNameAllDictorysAndRefresh(projectPath, pubSpaceName);
-}
-
-_runObfuscateAllFileNames(String projectPath) {
-  sleep(Duration(seconds: 3));
-  print("start rename lib's child file name and refresh code import");
-  renameAllFileNames(projectPath);
-}
-
 _encrypetString(String projectPath) {
   print('do encrypt strings');
   encryptStrings(projectPath);
@@ -205,6 +184,12 @@ _decryptString(String projectPath) {
   print('do decrypt strings');
   decryptStrings(projectPath);
   print('do decrypt strings finished');
+}
+
+_runUnifiedObfuscation(String projectPath) {
+  print('do unified obfuscation (AST-based file rename + string encryption)');
+  runUnifiedObfuscation(projectPath);
+  print('do unified obfuscation finished');
 }
 
 Future<List<bool>> _askWhichToBuild() async {

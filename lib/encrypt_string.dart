@@ -217,11 +217,18 @@ String _removeStringImportIfUnused(String source, String importUri) {
 
 String _insertImport(String source, String importLine, CompilationUnit unit) {
   final directives = unit.directives;
-  if (directives.isNotEmpty) {
-    final insertPos = directives.last.end;
-    return '${source.substring(0, insertPos)}\n$importLine${source.substring(insertPos)}';
+  if (directives.isEmpty) return '$importLine\n$source';
+
+  final firstPartIdx = directives.indexWhere((d) => d is PartDirective);
+  if (firstPartIdx >= 0) {
+    final insertPos = directives[firstPartIdx].offset;
+    return '${source.substring(0, insertPos)}$importLine\n'
+        '${source.substring(insertPos)}';
   }
-  return '$importLine\n$source';
+
+  final insertPos = directives.last.end;
+  return '${source.substring(0, insertPos)}\n$importLine'
+      '${source.substring(insertPos)}';
 }
 
 String _readSep(File storeFile) {
