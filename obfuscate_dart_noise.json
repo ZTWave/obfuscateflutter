@@ -1,0 +1,48 @@
+{
+  "pageCount": 6,
+  "classCount": 12,
+  "methodCountPerClass": 8,
+  "template": "page_sync_class",
+  "outputDir": "lib/dart_noise",
+  "garbageFileCountMin": 30,
+  "garbageFileCountMax": 50,
+  "snippets": [
+    "widget_layout_page",
+    "sync_math",
+    "sync_string",
+    "sync_list",
+    "sync_model",
+    "sync_enum_switch",
+    "custom_page_shell",
+    "custom_sync_mix",
+    "custom_sync_hash"
+  ],
+  "snippetWeights": {
+    "widget_layout_page": 2,
+    "sync_math": 3,
+    "sync_string": 2,
+    "sync_list": 2,
+    "sync_model": 2,
+    "sync_enum_switch": 1,
+    "custom_sync_mix": 2,
+    "custom_sync_hash": 2
+  },
+  "customTemplates": {
+    "pageBodies": [
+      {
+        "id": "custom_page_shell",
+        "body": "return const DecoratedBox(\n  decoration: BoxDecoration(),\n  child: Padding(\n    padding: EdgeInsets.all({{padding}}),\n    child: SizedBox(width: {{width}}, height: {{height}}),\n  ),\n);"
+      }
+    ],
+    "methodBodies": [
+      {
+        "id": "custom_sync_mix",
+        "body": "final mixed = input + seed + {{salt}};\nfinal rotated = (mixed << {{shift}}) ^ (mixed >> 1);\nreturn (rotated + seed + {{salt}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_hash",
+        "body": "final text = 'k{{salt}}_' + input.toString() + '_' + seed.toString();\nvar hash = seed;\nfor (final unit in text.codeUnits) {\n  hash = ((hash * 31) + unit + {{salt}}) & 0x3fffffff;\n}\nreturn hash;"
+      }
+    ]
+  }
+}

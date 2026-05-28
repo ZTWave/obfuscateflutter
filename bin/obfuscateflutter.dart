@@ -6,6 +6,7 @@ import 'package:obfuscateflutter/build_aab.dart';
 import 'package:obfuscateflutter/build_apk.dart';
 import 'package:obfuscateflutter/build_ipa.dart';
 import 'package:obfuscateflutter/cmd_utils.dart';
+import 'package:obfuscateflutter/dart_noise_obfuscator.dart';
 import 'package:obfuscateflutter/encrypt_string.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
@@ -81,6 +82,7 @@ void _readTaskAndDo(
   7.打包IOS IPA测试包
   8.恢复项目中已混淆的String
   9.统一混淆（AST方案：文件/目录重命名+混淆文档）
+  10.Dart随机代码注入/保留
 
   x.在临时生成目录中进行执行上述混淆任务并打包''');
   print('输入要运行的任务：');
@@ -130,6 +132,11 @@ void _readTaskAndDo(
     case "9":
       {
         _runUnifiedObfuscation(projectPath);
+        break;
+      }
+    case "10":
+      {
+        _runDartNoiseObfuscation(projectPath);
         break;
       }
     case "x":
@@ -190,6 +197,12 @@ _runUnifiedObfuscation(String projectPath) {
   print('do unified obfuscation (AST-based file and directory rename)');
   runUnifiedObfuscation(projectPath);
   print('do unified obfuscation finished');
+}
+
+_runDartNoiseObfuscation(String projectPath) {
+  print('do dart noise obfuscation');
+  runDartNoiseObfuscation(projectPath);
+  print('do dart noise obfuscation finished');
 }
 
 Future<List<bool>> _askWhichToBuild() async {
