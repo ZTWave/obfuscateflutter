@@ -7,6 +7,429 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
+  test('class inner noise injects reachable members and required imports', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_inner_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    Directory(p.join(projectDir.path, 'lib')).createSync();
+    File(p.join(projectDir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: sample_app
+environment:
+  sdk: ^3.2.3
+dependencies:
+  flutter:
+    sdk: flutter
+''');
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'classInnerNoise': {
+        'enabled': true,
+        'targetRatio': 0.5,
+        'maxTargetLines': 240,
+        'maxMembersPerClass': 16,
+        'maxHooksPerFile': 8,
+        'templateGroups': {
+          'executedLightweight': ['sync_hash'],
+          'retainedOnly': [
+            'async_future',
+            'timer_stub',
+            'file_io_stub',
+            'network_stub',
+            'platform_channel_stub',
+            'navigator_stub',
+            'set_state_stub',
+            'run_app_stub',
+            'debug_log_stub',
+          ],
+        },
+      },
+    }));
+    File(p.join(projectDir.path, 'lib', 'main.dart')).writeAsStringSync('''
+import 'package:flutter/widgets.dart';
+
+void main() {
+  runApp(const SampleApp());
+}
+
+class SampleApp extends StatelessWidget {
+  const SampleApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox.shrink();
+  }
+
+  String label(String input) {
+    return input.trim();
+  }
+}
+''');
+
+    runClassInnerNoiseObfuscation(projectDir.path);
+
+    final source =
+        File(p.join(projectDir.path, 'lib', 'main.dart')).readAsStringSync();
+    expect(source, contains("import 'dart:async' as obf_async;"));
+    expect(source, contains("import 'dart:io' as obf_io;"));
+    expect(
+      source,
+      contains("import 'package:flutter/services.dart' as obf_services;"),
+    );
+    expect(
+      RegExp("import 'package:flutter/widgets.dart';")
+          .allMatches(source)
+          .length,
+      1,
+    );
+    expect(
+      source,
+      contains("import 'package:flutter/widgets.dart' as obf_widgets;"),
+    );
+    expect(source, contains('obf_async.Future<int>'));
+    expect(source, contains('obf_async.Timer('));
+    expect(source, contains('obf_io.File('));
+    expect(source, contains('obf_io.HttpClient'));
+    expect(source, contains('obf_services.MethodChannel'));
+    expect(source, contains('obf_widgets.Navigator.of'));
+    expect(source, contains('setState'));
+    expect(source, contains('obf_widgets.runApp'));
+    expect(source, contains('obf_widgets.debugPrint'));
+    expect(source, contains('obfuscateflutter: class-inner hook'));
+    expect(source, contains('final obfNoise'));
+    expect(parseString(content: source).errors, isEmpty);
+
+    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
+          (file) =>
+              p.basename(file.path).startsWith('class_inner_noise_mapping_'),
+        );
+    final mapping =
+        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    expect(mapping['actual_added_lines'], greaterThan(0));
+    expect(mapping['imports_added'], contains('dart:async as obf_async'));
+    expect(mapping['imports_added'], contains('dart:io as obf_io'));
+    expect(
+      mapping['imports_added'],
+      contains('package:flutter/services.dart as obf_services'),
+    );
+    expect(mapping['classes_touched'], contains('SampleApp'));
+    expect(mapping['templates_used'], contains('timer_stub'));
+
+    runClassInnerNoiseObfuscation(projectDir.path);
+    final secondSource =
+        File(p.join(projectDir.path, 'lib', 'main.dart')).readAsStringSync();
+    expect(
+      RegExp('obfuscateflutter: class-inner members')
+          .allMatches(secondSource)
+          .length,
+      1,
+    );
+  });
+
+  test('class inner noise skips const constructors and expression bodies', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_inner_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    Directory(p.join(projectDir.path, 'lib')).createSync();
+    File(p.join(projectDir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: sample_app
+environment:
+  sdk: ^3.2.3
+dependencies:
+  flutter:
+    sdk: flutter
+''');
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'classInnerNoise': {
+        'enabled': true,
+        'targetRatio': 1.0,
+        'maxTargetLines': 120,
+        'templateGroups': {
+          'executedLightweight': ['sync_hash'],
+          'retainedOnly': ['timer_stub'],
+        },
+      },
+    }));
+    File(p.join(projectDir.path, 'lib', 'main.dart')).writeAsStringSync('''
+class SampleModel {
+  const SampleModel(this.value);
+
+  final int value;
+
+  int get doubled => value * 2;
+
+  int compute(int input) {
+    return input + value;
+  }
+}
+''');
+
+    runClassInnerNoiseObfuscation(projectDir.path);
+
+    final source =
+        File(p.join(projectDir.path, 'lib', 'main.dart')).readAsStringSync();
+    expect(source, contains('const SampleModel(this.value);'));
+    expect(source, contains('int get doubled => value * 2;'));
+    expect(source, contains('int compute(int input) {'));
+    expect(source, contains('final obfNoise'));
+    expect(parseString(content: source).errors, isEmpty);
+  });
+
+  test('class inner noise uses safe seeds in static methods', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_inner_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    Directory(p.join(projectDir.path, 'lib')).createSync();
+    File(p.join(projectDir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: sample_app
+environment:
+  sdk: ^3.2.3
+dependencies:
+  flutter:
+    sdk: flutter
+''');
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'classInnerNoise': {
+        'enabled': true,
+        'targetRatio': 1.0,
+        'maxTargetLines': 120,
+        'templateGroups': {
+          'executedLightweight': ['sync_hash'],
+          'retainedOnly': ['async_future'],
+        },
+      },
+    }));
+    File(p.join(projectDir.path, 'lib', 'api_repo.dart')).writeAsStringSync('''
+class ApiRepo {
+  static Future<String> load(String key) async {
+    return key.trim();
+  }
+}
+''');
+
+    runClassInnerNoiseObfuscation(projectDir.path);
+
+    final source = File(p.join(projectDir.path, 'lib', 'api_repo.dart'))
+        .readAsStringSync();
+    expect(source, isNot(contains('identityHashCode(this)')));
+    expect(source, contains("Object.hash('ApiRepo', 'load')"));
+    expect(source, contains('final obfNoise'));
+    expect(parseString(content: source).errors, isEmpty);
+  });
+
+  test('class inner noise prefixes flutter imports to avoid Key conflicts', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_inner_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    Directory(p.join(projectDir.path, 'lib')).createSync();
+    File(p.join(projectDir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: sample_app
+environment:
+  sdk: ^3.2.3
+dependencies:
+  flutter:
+    sdk: flutter
+''');
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'classInnerNoise': {
+        'enabled': true,
+        'targetRatio': 1.0,
+        'maxTargetLines': 160,
+        'templateGroups': {
+          'executedLightweight': ['sync_hash'],
+          'retainedOnly': [
+            'platform_channel_stub',
+            'navigator_stub',
+            'run_app_stub',
+          ],
+        },
+      },
+    }));
+    File(p.join(projectDir.path, 'lib', 'crypto_util.dart'))
+        .writeAsStringSync('''
+import 'package:encrypt/encrypt.dart';
+
+class CryptoUtil {
+  static final Key key = Key.fromUtf8('1234567890123456');
+
+  static String encode(String value) {
+    return value;
+  }
+}
+''');
+
+    runClassInnerNoiseObfuscation(projectDir.path);
+
+    final source = File(p.join(projectDir.path, 'lib', 'crypto_util.dart'))
+        .readAsStringSync();
+    expect(source,
+        contains("import 'package:flutter/widgets.dart' as obf_widgets;"));
+    expect(source, isNot(contains("import 'package:flutter/widgets.dart';")));
+    expect(source, contains('static final Key key'));
+    expect(source, contains('obf_widgets.Widget'));
+    expect(source, contains('obf_services.MethodChannel'));
+    expect(source, isNot(contains('identityHashCode(this)')));
+    expect(parseString(content: source).errors, isEmpty);
+  });
+
+  test('class inner noise does not always insert hook as first statement', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_inner_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    Directory(p.join(projectDir.path, 'lib')).createSync();
+    File(p.join(projectDir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: sample_app
+environment:
+  sdk: ^3.2.3
+dependencies:
+  flutter:
+    sdk: flutter
+''');
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'classInnerNoise': {
+        'enabled': true,
+        'targetRatio': 1.0,
+        'maxTargetLines': 160,
+        'templateGroups': {
+          'executedLightweight': ['sync_hash'],
+          'retainedOnly': ['async_future'],
+        },
+      },
+    }));
+    File(p.join(projectDir.path, 'lib', 'worker.dart')).writeAsStringSync('''
+class Worker {
+  int work(int input) {
+    final first = input + 1;
+    final second = first * 2;
+    return second;
+  }
+}
+''');
+
+    runClassInnerNoiseObfuscation(projectDir.path);
+
+    final source =
+        File(p.join(projectDir.path, 'lib', 'worker.dart')).readAsStringSync();
+    final firstStatement = source.indexOf('final first = input + 1;');
+    final hook = source.indexOf('obfuscateflutter: class-inner hook');
+    final secondStatement = source.indexOf('final second = first * 2;');
+    expect(hook, greaterThan(firstStatement));
+    expect(hook, lessThan(secondStatement));
+    expect(parseString(content: source).errors, isEmpty);
+  });
+
+  test('class inner noise members are inserted among class members', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_inner_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    Directory(p.join(projectDir.path, 'lib')).createSync();
+    File(p.join(projectDir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: sample_app
+environment:
+  sdk: ^3.2.3
+dependencies:
+  flutter:
+    sdk: flutter
+''');
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'classInnerNoise': {
+        'enabled': true,
+        'targetRatio': 1.0,
+        'maxTargetLines': 160,
+        'templateGroups': {
+          'executedLightweight': ['sync_hash'],
+          'retainedOnly': ['async_future'],
+        },
+      },
+    }));
+    File(p.join(projectDir.path, 'lib', 'controller.dart'))
+        .writeAsStringSync('''
+class Controller {
+  int first() {
+    return 1;
+  }
+
+  int middle() {
+    return 2;
+  }
+
+  int after() {
+    return 3;
+  }
+}
+''');
+
+    runClassInnerNoiseObfuscation(projectDir.path);
+
+    final source = File(p.join(projectDir.path, 'lib', 'controller.dart'))
+        .readAsStringSync();
+    final firstMember = source.indexOf('int first()');
+    final noiseMembers =
+        source.indexOf('obfuscateflutter: class-inner members');
+    final afterMember = source.indexOf('int after()');
+    expect(noiseMembers, greaterThan(firstMember));
+    expect(noiseMembers, lessThan(afterMember));
+    expect(parseString(content: source).errors, isEmpty);
+  });
+
   test('dart noise generation injects sync retain hook and mapping', () {
     final projectDir = Directory.systemTemp.createTempSync('obf_noise_test_');
     addTearDown(() {

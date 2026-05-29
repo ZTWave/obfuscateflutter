@@ -27,6 +27,36 @@
     "custom_sync_mix": 2,
     "custom_sync_hash": 2
   },
+  "classInnerNoise": {
+    "enabled": true,
+    "targetRatio": 1.0,
+    "executionPolicy": "referenceOnly",
+    "maxTargetLines": 8000,
+    "maxMembersPerClass": 16,
+    "maxHooksPerFile": 30,
+    "skipFiles": [
+      "**/*.g.dart",
+      "**/*.freezed.dart",
+      "**/*.gr.dart"
+    ],
+    "templateGroups": {
+      "executedLightweight": [
+        "sync_hash",
+        "sync_switch"
+      ],
+      "retainedOnly": [
+        "async_future",
+        "timer_stub",
+        "file_io_stub",
+        "network_stub",
+        "platform_channel_stub",
+        "navigator_stub",
+        "set_state_stub",
+        "run_app_stub",
+        "debug_log_stub"
+      ]
+    }
+  },
   "customTemplates": {
     "pageBodies": [
       {

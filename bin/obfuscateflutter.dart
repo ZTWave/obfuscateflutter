@@ -83,6 +83,7 @@ void _readTaskAndDo(
   8.恢复项目中已混淆的String
   9.统一混淆（AST方案：文件/目录重命名+混淆文档）
   10.Dart随机代码注入/保留
+  11.类内垃圾代码注入
 
   x.在临时生成目录中进行执行上述混淆任务并打包''');
   print('输入要运行的任务：');
@@ -137,6 +138,11 @@ void _readTaskAndDo(
     case "10":
       {
         _runDartNoiseObfuscation(projectPath);
+        break;
+      }
+    case "11":
+      {
+        _runClassInnerNoiseObfuscation(projectPath);
         break;
       }
     case "x":
@@ -203,6 +209,12 @@ _runDartNoiseObfuscation(String projectPath) {
   print('do dart noise obfuscation');
   runDartNoiseObfuscation(projectPath);
   print('do dart noise obfuscation finished');
+}
+
+_runClassInnerNoiseObfuscation(String projectPath) {
+  print('do class inner dart noise obfuscation');
+  runClassInnerNoiseObfuscation(projectPath);
+  print('do class inner dart noise obfuscation finished');
 }
 
 Future<List<bool>> _askWhichToBuild() async {

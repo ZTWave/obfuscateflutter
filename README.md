@@ -19,6 +19,8 @@
 
 菜单 `10.Dart随机代码注入/保留` 会在 Flutter 项目的 `lib` 下生成随机 Dart 文件，并自动在 `lib/main.dart` 中注入一次保留调用，避免 release 构建时被 tree shaking 移除。
 
+菜单 `11.类内垃圾代码注入` 会扫描 Flutter 项目的 `lib` 目录，在已有 Dart 类内部插入垃圾成员和轻量可达 hook。高风险 API 模板可以出现在垃圾成员方法中，但业务方法只会插入轻量 retain 调用，不会直接执行这些高风险逻辑。
+
 配置读取顺序：
 
 1. 优先读取目标 Flutter 项目根目录下的 `obfuscate_dart_noise.json`
@@ -56,6 +58,36 @@
     "custom_sync_mix": 2,
     "custom_sync_hash": 2
   },
+  "classInnerNoise": {
+    "enabled": true,
+    "targetRatio": 1.0,
+    "executionPolicy": "referenceOnly",
+    "maxTargetLines": 8000,
+    "maxMembersPerClass": 16,
+    "maxHooksPerFile": 30,
+    "skipFiles": [
+      "**/*.g.dart",
+      "**/*.freezed.dart",
+      "**/*.gr.dart"
+    ],
+    "templateGroups": {
+      "executedLightweight": [
+        "sync_hash",
+        "sync_switch"
+      ],
+      "retainedOnly": [
+        "async_future",
+        "timer_stub",
+        "file_io_stub",
+        "network_stub",
+        "platform_channel_stub",
+        "navigator_stub",
+        "set_state_stub",
+        "run_app_stub",
+        "debug_log_stub"
+      ]
+    }
+  },
   "customTemplates": {
     "pageBodies": [
       {
@@ -88,6 +120,60 @@
 | `snippetWeights` | 控制方法类片段生成比例，值范围 `1-20`。 |
 | `customTemplates.pageBodies` | 自定义页面 `build` 方法体模板。 |
 | `customTemplates.methodBodies` | 自定义同步方法体模板。 |
+
+### 类内垃圾代码注入
+
+菜单 `11.类内垃圾代码注入` 使用同一个 `obfuscate_dart_noise.json` 中的 `classInnerNoise` 配置。
+
+| 字段 | 说明 |
+| --- | --- |
+| `classInnerNoise.enabled` | 是否启用类内注入。菜单 11 执行时为 `false` 会直接跳过。 |
+| `classInnerNoise.targetRatio` | 目标注入代码量比例。默认 `1.0`，表示尽量接近原 `lib` 业务 Dart 非空行数的 1 倍。 |
+| `classInnerNoise.executionPolicy` | 当前支持 `referenceOnly` 和 `guardedRare`，默认 `referenceOnly`。高风险模板只做 tear-off 引用，不在正常业务路径执行。 |
+| `classInnerNoise.maxTargetLines` | 本次最多新增的源码行数，避免超大项目生成过多代码。 |
+| `classInnerNoise.maxMembersPerClass` | 单个类内最多新增的垃圾成员数量。 |
+| `classInnerNoise.maxHooksPerFile` | 单个 Dart 文件最多插入的业务 hook 数量。 |
+| `classInnerNoise.skipFiles` | 跳过文件规则，默认跳过 `*.g.dart`、`*.freezed.dart`、`*.gr.dart`。 |
+| `classInnerNoise.templateGroups.executedLightweight` | 会被业务 hook 轻量触达的同步模板。 |
+| `classInnerNoise.templateGroups.retainedOnly` | 只被 retain 函数引用的高风险模板。 |
+
+类内注入只处理普通 `class`，并且只在 block-bodied 方法或非 `const` 构造函数中插入 hook。它会跳过 `const` 构造、注解、常量表达式、expression-bodied 方法、生成文件和无法安全解析的文件，避免出现 `Methods can't be invoked in constant expressions` 之类的错误。
+
+业务方法中插入的 hook 形态类似：
+
+```dart
+final _obfNoiseAbc123 = _obfXyzRetain(identityHashCode(this)); // obfuscateflutter: class-inner hook
+if (_obfNoiseAbc123 == -1) {
+  _obfXyzRetain(_obfNoiseAbc123);
+}
+```
+
+高风险 API 只出现在类内垃圾成员方法体中，例如 `Future`、`Timer`、`File`、`HttpClient`、`MethodChannel`、`Navigator`、`setState`、`runApp`、`debugPrint`。默认策略不会从业务 hook 中调用这些方法，只会通过 tear-off 保留引用，降低 release tree shaking 移除概率，同时避免阻塞业务或改变正常运行逻辑。
+
+#### 类内模板和 import
+
+| 模板 | 类型 | 自动 import | 说明 |
+| --- | --- | --- | --- |
+| `sync_hash` | 轻量 | 无 | 同步 hash/codeUnits 计算。 |
+| `sync_switch` | 轻量 | 无 | 同步 switch 分支计算。 |
+| `async_future` | 保留 | `dart:async` | 生成 async/Future 方法体，只被引用。 |
+| `timer_stub` | 保留 | `dart:async`、`package:flutter/widgets.dart` | 生成 Timer/debugPrint 方法体，只被引用。 |
+| `file_io_stub` | 保留 | `dart:io` | 生成 File 引用方法体，只被引用。 |
+| `network_stub` | 保留 | `dart:io` | 生成 HttpClient 引用方法体，只被引用。 |
+| `platform_channel_stub` | 保留 | `package:flutter/services.dart` | 生成 MethodChannel 引用方法体，只被引用。 |
+| `navigator_stub` | 保留 | `package:flutter/widgets.dart` | 生成 Navigator 引用方法体，只被引用。 |
+| `set_state_stub` | 保留 | `package:flutter/widgets.dart` | 生成 setState 动态引用方法体，只被引用。 |
+| `run_app_stub` | 保留 | `package:flutter/widgets.dart` | 生成 runApp 方法体，只被引用。 |
+| `debug_log_stub` | 保留 | `package:flutter/widgets.dart` | 生成 debugPrint 方法体，只被引用。 |
+
+工具会在写入前解析文件已有 import，并按实际使用的模板自动补齐缺失 import：
+
+- 不重复添加已有 import。
+- 文件已存在 `package:flutter/widgets.dart` 或 `package:flutter/material.dart` 时，会复用 Flutter import。
+- 只添加本次实际使用模板需要的 import。
+- 模板需要 Flutter import 但目标项目 `pubspec.yaml` 没有 Flutter 依赖时，会跳过对应模板并记录到映射文档。
+
+菜单 11 执行后会输出 `class_inner_noise_mapping_<timestamp>.json`，记录原始行数、目标新增行数、实际新增行数、修改文件、修改类、成员名、hook 位置、使用模板、自动新增 import 和跳过原因。
 
 ### 内置 snippets
 

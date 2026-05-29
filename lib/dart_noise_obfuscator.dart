@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:obfuscateflutter/log.dart';
 import 'package:obfuscateflutter/random_key.dart';
 import 'package:path/path.dart' as p;
@@ -13,6 +14,8 @@ const _templateName = 'page_sync_class';
 const _retainFunctionName = 'obfDartNoiseRetain';
 const _importMarker = '// obfuscateflutter: dart-noise import';
 const _callMarker = '// obfuscateflutter: dart-noise retain';
+const _classInnerMemberMarker = '// obfuscateflutter: class-inner members';
+const _classInnerHookMarker = '// obfuscateflutter: class-inner hook';
 const _defaultSnippets = ['widget_empty_page', 'sync_math'];
 const _knownSnippets = {
   'widget_empty_page',
@@ -23,6 +26,45 @@ const _knownSnippets = {
   'sync_model',
   'sync_enum_switch',
 };
+const _defaultLightweightTemplates = ['sync_hash', 'sync_switch'];
+const _defaultRetainedTemplates = [
+  'async_future',
+  'timer_stub',
+  'file_io_stub',
+  'network_stub',
+  'platform_channel_stub',
+  'navigator_stub',
+  'set_state_stub',
+  'run_app_stub',
+  'debug_log_stub',
+];
+const _knownClassInnerTemplates = {
+  'sync_hash',
+  'sync_switch',
+  'async_future',
+  'timer_stub',
+  'file_io_stub',
+  'network_stub',
+  'platform_channel_stub',
+  'navigator_stub',
+  'set_state_stub',
+  'run_app_stub',
+  'debug_log_stub',
+};
+const _classInnerTemplateImports = {
+  'async_future': ['dart:async as obf_async'],
+  'timer_stub': [
+    'dart:async as obf_async',
+    'package:flutter/widgets.dart as obf_widgets',
+  ],
+  'file_io_stub': ['dart:io as obf_io'],
+  'network_stub': ['dart:io as obf_io'],
+  'platform_channel_stub': ['package:flutter/services.dart as obf_services'],
+  'navigator_stub': ['package:flutter/widgets.dart as obf_widgets'],
+  'set_state_stub': ['package:flutter/widgets.dart as obf_widgets'],
+  'run_app_stub': ['package:flutter/widgets.dart as obf_widgets'],
+  'debug_log_stub': ['package:flutter/widgets.dart as obf_widgets'],
+};
 const _methodSnippets = {
   'sync_math',
   'sync_string',
@@ -30,6 +72,59 @@ const _methodSnippets = {
   'sync_model',
   'sync_enum_switch',
 };
+
+void runClassInnerNoiseObfuscation(String projectPath) {
+  final projectDir = Directory(projectPath);
+  if (!projectDir.existsSync()) {
+    throw StateError('Project directory not found: $projectPath');
+  }
+
+  final config = DartNoiseConfig.load(projectPath);
+  final innerConfig = config.classInnerNoise;
+  if (!innerConfig.enabled) {
+    Log.log('Class inner noise is disabled by config.');
+    return;
+  }
+
+  final libDir = Directory(p.join(projectPath, 'lib'));
+  if (!libDir.existsSync()) {
+    throw StateError('lib directory not found in $projectPath');
+  }
+
+  final pubspec = File(p.join(projectPath, 'pubspec.yaml'));
+  final hasFlutter = pubspec.existsSync() &&
+      RegExp(r'^\s*flutter\s*:', multiLine: true)
+          .hasMatch(pubspec.readAsStringSync());
+  final result = _injectClassInnerNoise(
+    libDir: libDir,
+    config: innerConfig,
+    hasFlutter: hasFlutter,
+  );
+
+  final mappingPath =
+      p.join(projectPath, 'class_inner_noise_mapping_${_timestamp()}.json');
+  final mapping = {
+    'generated_at': DateTime.now().toIso8601String(),
+    'config': innerConfig.toJson(),
+    'config_file': config.configSource,
+    'original_lines': result.originalLines,
+    'target_lines': result.targetLines,
+    'actual_added_lines': result.actualAddedLines,
+    'files_touched': result.filesTouched,
+    'classes_touched': result.classesTouched,
+    'members': result.members,
+    'hooks': result.hooks,
+    'templates_used': result.templatesUsed.toList()..sort(),
+    'imports_added': result.importsAdded.toList()..sort(),
+    'skipped': result.skipped,
+  };
+  File(mappingPath).writeAsStringSync(
+    const JsonEncoder.withIndent('  ').convert(mapping),
+  );
+
+  Log.log('Class inner noise obfuscation complete.');
+  Log.log('Mapping document: $mappingPath');
+}
 
 void runDartNoiseObfuscation(String projectPath) {
   final projectDir = Directory(projectPath);
@@ -102,6 +197,7 @@ class DartNoiseConfig {
     required this.configSource,
     required this.garbageFileCountMin,
     required this.garbageFileCountMax,
+    required this.classInnerNoise,
   });
 
   final int pageCount;
@@ -117,6 +213,7 @@ class DartNoiseConfig {
   final String configSource;
   final int garbageFileCountMin;
   final int garbageFileCountMax;
+  final ClassInnerNoiseConfig classInnerNoise;
 
   static DartNoiseConfig load(String projectPath) {
     final file = _resolveConfigFile(projectPath);
@@ -176,6 +273,7 @@ class DartNoiseConfig {
       snippets,
       customTemplates.allIds,
     );
+    final classInnerNoise = ClassInnerNoiseConfig.fromJson(decoded);
 
     return DartNoiseConfig(
       pageCount: pageCount,
@@ -193,6 +291,7 @@ class DartNoiseConfig {
           : 'tool_default',
       garbageFileCountMin: garbageFileCountMin,
       garbageFileCountMax: garbageFileCountMax,
+      classInnerNoise: classInnerNoise,
     );
   }
 
@@ -214,6 +313,107 @@ class DartNoiseConfig {
       'configSource': configSource,
       'garbageFileCountMin': garbageFileCountMin,
       'garbageFileCountMax': garbageFileCountMax,
+      'classInnerNoise': classInnerNoise.toJson(),
+    };
+  }
+}
+
+class ClassInnerNoiseConfig {
+  ClassInnerNoiseConfig({
+    required this.enabled,
+    required this.targetRatio,
+    required this.maxTargetLines,
+    required this.maxMembersPerClass,
+    required this.maxHooksPerFile,
+    required this.executionPolicy,
+    required this.skipFiles,
+    required this.lightweightTemplates,
+    required this.retainedTemplates,
+  });
+
+  final bool enabled;
+  final double targetRatio;
+  final int maxTargetLines;
+  final int maxMembersPerClass;
+  final int maxHooksPerFile;
+  final String executionPolicy;
+  final List<String> skipFiles;
+  final List<String> lightweightTemplates;
+  final List<String> retainedTemplates;
+
+  static ClassInnerNoiseConfig fromJson(Map<String, dynamic> json) {
+    final value = json['classInnerNoise'];
+    if (value == null) {
+      return ClassInnerNoiseConfig(
+        enabled: true,
+        targetRatio: 1,
+        maxTargetLines: 8000,
+        maxMembersPerClass: 16,
+        maxHooksPerFile: 30,
+        executionPolicy: 'referenceOnly',
+        skipFiles: const ['**/*.g.dart', '**/*.freezed.dart', '**/*.gr.dart'],
+        lightweightTemplates: List<String>.from(_defaultLightweightTemplates),
+        retainedTemplates: List<String>.from(_defaultRetainedTemplates),
+      );
+    }
+    if (value is! Map<String, dynamic>) {
+      throw StateError('classInnerNoise must be a JSON object.');
+    }
+    final enabled = value['enabled'] != false;
+    final ratioValue = value['targetRatio'] ?? 1.0;
+    if (ratioValue is! num || ratioValue <= 0 || ratioValue > 3) {
+      throw StateError('classInnerNoise.targetRatio must be from 0 to 3.');
+    }
+    final policy = value['executionPolicy'] ?? 'referenceOnly';
+    if (policy is! String ||
+        !const {'referenceOnly', 'guardedRare'}.contains(policy)) {
+      throw StateError('classInnerNoise.executionPolicy is unsupported.');
+    }
+    final templateGroups = value['templateGroups'];
+    final groupJson = templateGroups is Map<String, dynamic>
+        ? templateGroups
+        : <String, dynamic>{};
+    return ClassInnerNoiseConfig(
+      enabled: enabled,
+      targetRatio: ratioValue.toDouble(),
+      maxTargetLines:
+          _readOptionalBoundedInt(value, 'maxTargetLines', 20, 50000, 8000),
+      maxMembersPerClass:
+          _readOptionalBoundedInt(value, 'maxMembersPerClass', 1, 80, 16),
+      maxHooksPerFile:
+          _readOptionalBoundedInt(value, 'maxHooksPerFile', 1, 300, 30),
+      executionPolicy: policy,
+      skipFiles: _readStringList(
+        value,
+        'skipFiles',
+        const ['**/*.g.dart', '**/*.freezed.dart', '**/*.gr.dart'],
+      ),
+      lightweightTemplates: _readTemplateIds(
+        groupJson,
+        'executedLightweight',
+        _defaultLightweightTemplates,
+      ),
+      retainedTemplates: _readTemplateIds(
+        groupJson,
+        'retainedOnly',
+        _defaultRetainedTemplates,
+      ),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'enabled': enabled,
+      'targetRatio': targetRatio,
+      'maxTargetLines': maxTargetLines,
+      'maxMembersPerClass': maxMembersPerClass,
+      'maxHooksPerFile': maxHooksPerFile,
+      'executionPolicy': executionPolicy,
+      'skipFiles': skipFiles,
+      'templateGroups': {
+        'executedLightweight': lightweightTemplates,
+        'retainedOnly': retainedTemplates,
+      },
     };
   }
 }
@@ -283,6 +483,285 @@ class _GeneratedNoise {
   final List<String> dartClasses;
   final List<String> methods;
   final Map<String, int> snippetUsage;
+}
+
+class _ClassInnerResult {
+  _ClassInnerResult({
+    required this.originalLines,
+    required this.targetLines,
+    required this.actualAddedLines,
+    required this.filesTouched,
+    required this.classesTouched,
+    required this.members,
+    required this.hooks,
+    required this.templatesUsed,
+    required this.importsAdded,
+    required this.skipped,
+  });
+
+  final int originalLines;
+  final int targetLines;
+  final int actualAddedLines;
+  final List<String> filesTouched;
+  final List<String> classesTouched;
+  final List<String> members;
+  final List<Map<String, dynamic>> hooks;
+  final Set<String> templatesUsed;
+  final Set<String> importsAdded;
+  final List<Map<String, dynamic>> skipped;
+}
+
+class _ClassCandidate {
+  _ClassCandidate({
+    required this.declaration,
+    required this.methods,
+    required this.memberInsertOffset,
+  });
+
+  final ClassDeclaration declaration;
+  final List<_HookCandidate> methods;
+  final int memberInsertOffset;
+}
+
+class _HookCandidate {
+  _HookCandidate({
+    required this.name,
+    required this.insertOffset,
+    required this.isStatic,
+  });
+
+  final String name;
+  final int insertOffset;
+  final bool isStatic;
+}
+
+class _ClassCandidateVisitor extends RecursiveAstVisitor<void> {
+  final classes = <_ClassCandidate>[];
+
+  @override
+  void visitClassDeclaration(ClassDeclaration node) {
+    final hooks = <_HookCandidate>[];
+    for (final member in node.members) {
+      if (member is MethodDeclaration) {
+        if (member.isAbstract || member.externalKeyword != null) continue;
+        if (member.isGetter || member.isSetter || member.isOperator) continue;
+        final body = member.body;
+        if (body is BlockFunctionBody) {
+          hooks.add(_HookCandidate(
+            name: member.name.lexeme,
+            insertOffset: _hookInsertOffset(body.block),
+            isStatic: member.isStatic,
+          ));
+        }
+      } else if (member is ConstructorDeclaration) {
+        if (member.constKeyword != null ||
+            member.externalKeyword != null ||
+            member.factoryKeyword != null) {
+          continue;
+        }
+        final body = member.body;
+        if (body is BlockFunctionBody) {
+          hooks.add(_HookCandidate(
+            name: member.name?.lexeme ?? node.name.lexeme,
+            insertOffset: _hookInsertOffset(body.block),
+            isStatic: false,
+          ));
+        }
+      }
+    }
+    if (hooks.isNotEmpty) {
+      classes.add(_ClassCandidate(
+        declaration: node,
+        methods: hooks,
+        memberInsertOffset: _memberInsertOffset(node),
+      ));
+    }
+    super.visitClassDeclaration(node);
+  }
+}
+
+int _hookInsertOffset(Block block) {
+  final statements = block.statements;
+  if (statements.length >= 2) {
+    return statements.first.end;
+  }
+  return block.leftBracket.end;
+}
+
+int _memberInsertOffset(ClassDeclaration declaration) {
+  final members = declaration.members;
+  if (members.length >= 3) {
+    return members[members.length ~/ 2].offset;
+  }
+  if (members.length >= 2) {
+    return members.last.offset;
+  }
+  return declaration.rightBracket.offset;
+}
+
+_ClassInnerResult _injectClassInnerNoise({
+  required Directory libDir,
+  required ClassInnerNoiseConfig config,
+  required bool hasFlutter,
+}) {
+  final dartFiles = libDir
+      .listSync(recursive: true)
+      .whereType<File>()
+      .where((file) => p.extension(file.path) == '.dart')
+      .where((file) {
+    final rel = _posixRelative(file.path, from: libDir.path);
+    return !_shouldSkipClassInnerFile(rel, config.skipFiles);
+  }).toList()
+    ..sort((a, b) => a.path.compareTo(b.path));
+  final skipped = <Map<String, dynamic>>[];
+  var originalLines = 0;
+  for (final file in dartFiles) {
+    final source = file.readAsStringSync();
+    originalLines += _nonEmptyLineCount(source);
+  }
+  final targetLines = min(config.maxTargetLines,
+      max(1, (originalLines * config.targetRatio).ceil()));
+  var actualAddedLines = 0;
+  final filesTouched = <String>[];
+  final classesTouched = <String>[];
+  final members = <String>[];
+  final hooks = <Map<String, dynamic>>[];
+  final templatesUsed = <String>{};
+  final importsAdded = <String>{};
+  final random = Random();
+
+  for (final file in dartFiles) {
+    if (actualAddedLines >= targetLines) break;
+    final relativeFile =
+        p.posix.join('lib', _posixRelative(file.path, from: libDir.path));
+    final source = file.readAsStringSync();
+    if (source.contains(_classInnerMemberMarker)) {
+      skipped.add({'file': relativeFile, 'reason': 'already_injected'});
+      continue;
+    }
+    final parseResult = parseString(content: source, throwIfDiagnostics: false);
+    if (parseResult.errors.isNotEmpty ||
+        parseResult.unit.directives
+            .any((directive) => directive is PartOfDirective)) {
+      skipped.add({'file': relativeFile, 'reason': 'parse_error_or_part_file'});
+      continue;
+    }
+    final visitor = _ClassCandidateVisitor();
+    parseResult.unit.accept(visitor);
+    if (visitor.classes.isEmpty) {
+      skipped.add({'file': relativeFile, 'reason': 'no_safe_class_candidates'});
+      continue;
+    }
+
+    final insertions = <_SourceInsertion>[];
+    final neededImports = <String>{};
+    var hooksInFile = 0;
+    var touchedFile = false;
+    for (final candidate in visitor.classes) {
+      if (actualAddedLines >= targetLines) break;
+      if (hooksInFile >= config.maxHooksPerFile) break;
+      final selectedTemplates = _selectClassInnerTemplates(
+        config,
+        hasFlutter: hasFlutter,
+        skipped: skipped,
+        file: relativeFile,
+      );
+      if (selectedTemplates.isEmpty) continue;
+      final prefix = '_obf${genRandomKey(8)}';
+      final memberSource =
+          _classInnerMembersSource(prefix, selectedTemplates, random);
+      final memberLines = _nonEmptyLineCount(memberSource);
+      final className = candidate.declaration.name.lexeme;
+      insertions.add(_SourceInsertion(
+        candidate.memberInsertOffset,
+        '\n$memberSource',
+      ));
+      classesTouched.add(className);
+      members
+          .addAll(_classInnerMemberNames(prefix, selectedTemplates, className));
+      templatesUsed.addAll(selectedTemplates);
+      for (final template in selectedTemplates) {
+        neededImports.addAll(_classInnerTemplateImports[template] ?? const []);
+      }
+      var hooksForClass = 0;
+      for (final hook in candidate.methods) {
+        if (hooksInFile >= config.maxHooksPerFile) break;
+        if (actualAddedLines + memberLines >= targetLines &&
+            hooksForClass > 0) {
+          break;
+        }
+        final hookSource = _classInnerHookSource(
+          prefix,
+          className: className,
+          methodName: hook.name,
+          isStatic: hook.isStatic,
+        );
+        insertions.add(_SourceInsertion(hook.insertOffset, hookSource));
+        hooks.add({
+          'file': relativeFile,
+          'class': className,
+          'method': hook.name,
+          'hook': '${prefix}Retain',
+        });
+        hooksInFile++;
+        hooksForClass++;
+      }
+      if (hooksForClass == 0) continue;
+      actualAddedLines += memberLines + (hooksForClass * 4);
+      touchedFile = true;
+    }
+    if (!touchedFile) continue;
+    final importInsertions = _classInnerImportInsertions(
+      parseResult.unit,
+      source,
+      neededImports,
+      hasFlutter: hasFlutter,
+      skipped: skipped,
+      file: relativeFile,
+    );
+    insertions.addAll(importInsertions.insertions);
+    importsAdded.addAll(importInsertions.added);
+    final updated = _applyInsertions(source, insertions);
+    final updatedParse =
+        parseString(content: updated, throwIfDiagnostics: false);
+    if (updatedParse.errors.isNotEmpty) {
+      skipped
+          .add({'file': relativeFile, 'reason': 'updated_source_parse_error'});
+      continue;
+    }
+    file.writeAsStringSync(updated);
+    filesTouched.add(relativeFile);
+  }
+
+  return _ClassInnerResult(
+    originalLines: originalLines,
+    targetLines: targetLines,
+    actualAddedLines: actualAddedLines,
+    filesTouched: filesTouched,
+    classesTouched: classesTouched.toSet().toList(),
+    members: members,
+    hooks: hooks,
+    templatesUsed: templatesUsed,
+    importsAdded: importsAdded,
+    skipped: skipped,
+  );
+}
+
+class _SourceInsertion {
+  _SourceInsertion(this.offset, this.text) : endOffset = offset;
+
+  _SourceInsertion.replace(this.offset, this.endOffset, this.text);
+
+  final int offset;
+  final int endOffset;
+  final String text;
+}
+
+class _ImportInsertions {
+  _ImportInsertions(this.insertions, this.added);
+
+  final List<_SourceInsertion> insertions;
+  final Set<String> added;
 }
 
 enum _ExtraFileKind {
@@ -559,6 +1038,40 @@ int _readOptionalBoundedInt(
 ) {
   if (!json.containsKey(key)) return defaultValue;
   return _readBoundedInt(json, key, min, max);
+}
+
+List<String> _readStringList(
+  Map<String, dynamic> json,
+  String key,
+  List<String> defaults,
+) {
+  final value = json[key];
+  if (value == null) return List<String>.from(defaults);
+  if (value is! List) {
+    throw StateError('$key must be a string array.');
+  }
+  final result = <String>[];
+  for (final item in value) {
+    if (item is! String || item.trim().isEmpty) {
+      throw StateError('$key must be a string array.');
+    }
+    result.add(item);
+  }
+  return result;
+}
+
+List<String> _readTemplateIds(
+  Map<String, dynamic> json,
+  String key,
+  List<String> defaults,
+) {
+  final ids = _readStringList(json, key, defaults);
+  for (final id in ids) {
+    if (!_knownClassInnerTemplates.contains(id)) {
+      throw StateError('Unsupported class inner noise template: $id.');
+    }
+  }
+  return ids;
 }
 
 _CustomTemplates _readCustomTemplates(Map<String, dynamic> json) {
@@ -886,14 +1399,15 @@ List<_ExtraFile> _buildExtraFiles(
 ) {
   if (extraCount <= 0) return [];
   final files = <_ExtraFile>[];
-  final primaryDir = directories.first;
   var index = 0;
+  final secondaryDirs =
+      directories.length > 1 ? directories.skip(1).toList() : directories;
 
   if (extraCount >= 1) {
-    files.add(_extraFile(primaryDir, _ExtraFileKind.page, index++));
+    files.add(_extraFile(secondaryDirs.first, _ExtraFileKind.page, index++));
   }
   if (extraCount >= 2) {
-    files.add(_extraFile(primaryDir, _ExtraFileKind.worker, index++));
+    files.add(_extraFile(secondaryDirs.first, _ExtraFileKind.worker, index++));
   }
 
   final kinds = [
@@ -901,10 +1415,8 @@ List<_ExtraFile> _buildExtraFiles(
     _ExtraFileKind.page,
     _ExtraFileKind.worker,
   ];
-  final secondaryDirs =
-      directories.length > 1 ? directories.skip(1).toList() : directories;
   while (files.length < extraCount) {
-    final dir = secondaryDirs[(files.length - 2) % secondaryDirs.length];
+    final dir = secondaryDirs[(files.length ~/ 2) % secondaryDirs.length];
     final kind = kinds[files.length % kinds.length];
     files.add(_extraFile(dir, kind, index++));
   }
@@ -1091,6 +1603,340 @@ String _instanceName(String className) => '_${className[0].toLowerCase()}'
 
 String _posixRelative(String fullPath, {required String from}) {
   return p.relative(fullPath, from: from).replaceAll(p.separator, '/');
+}
+
+bool _shouldSkipClassInnerFile(String relativePath, List<String> patterns) {
+  final basename = p.posix.basename(relativePath);
+  if (relativePath.split('/').any((part) => part.startsWith('.'))) return true;
+  for (final pattern in patterns) {
+    if (pattern.startsWith('**/*.') &&
+        basename.endsWith(pattern.substring(4))) {
+      return true;
+    }
+    if (pattern == relativePath || pattern == basename) return true;
+  }
+  return false;
+}
+
+int _nonEmptyLineCount(String source) {
+  return source.split('\n').where((line) => line.trim().isNotEmpty).length;
+}
+
+List<String> _selectClassInnerTemplates(
+  ClassInnerNoiseConfig config, {
+  required bool hasFlutter,
+  required List<Map<String, dynamic>> skipped,
+  required String file,
+}) {
+  final selected = <String>[
+    ...config.lightweightTemplates.take(max(1, config.maxMembersPerClass ~/ 4)),
+  ];
+  final remaining = max(0, config.maxMembersPerClass - selected.length);
+  for (final template in config.retainedTemplates.take(remaining)) {
+    final imports = _classInnerTemplateImports[template] ?? const [];
+    final needsFlutter =
+        imports.any((item) => item.startsWith('package:flutter/'));
+    if (needsFlutter && !hasFlutter) {
+      skipped.add({
+        'file': file,
+        'template': template,
+        'reason': 'missing_flutter_dependency',
+      });
+      continue;
+    }
+    selected.add(template);
+  }
+  return selected.toSet().toList();
+}
+
+String _classInnerMembersSource(
+  String prefix,
+  List<String> templates,
+  Random random,
+) {
+  final seed = random.nextInt(1 << 20) + 1;
+  final buffer = StringBuffer()
+    ..writeln('  $_classInnerMemberMarker')
+    ..writeln('  static final int ${prefix}Seed = identityHashCode(\'$seed\');')
+    ..writeln()
+    ..writeln('  static int ${prefix}Retain(Object? seed) {')
+    ..writeln('    final refs = <Object?>[');
+  for (final template in templates.where(
+      (template) => template != 'sync_hash' && template != 'sync_switch')) {
+    buffer.writeln('      $prefix${_classInnerTemplateSuffix(template)},');
+  }
+  buffer
+    ..writeln('    ];')
+    ..writeln('    var value = ${prefix}SyncHash(seed) ^ refs.length;');
+  if (templates.contains('sync_switch')) {
+    buffer.writeln('    value ^= ${prefix}SyncSwitch(value);');
+  }
+  buffer
+    ..writeln('    if (value == -1 && refs.isNotEmpty) {')
+    ..writeln('      return identityHashCode(refs.first);')
+    ..writeln('    }')
+    ..writeln('    return value;')
+    ..writeln('  }')
+    ..writeln()
+    ..writeln('  static int ${prefix}SyncHash(Object? seed) {')
+    ..writeln('    final text = seed?.toString() ?? \'\';')
+    ..writeln('    var hash = ${prefix}Seed;')
+    ..writeln('    for (final unit in text.codeUnits) {')
+    ..writeln('      hash = ((hash * 33) ^ unit) & 0x3fffffff;')
+    ..writeln('    }')
+    ..writeln('    return hash;')
+    ..writeln('  }')
+    ..writeln();
+  if (templates.contains('sync_switch')) {
+    buffer
+      ..writeln('  static int ${prefix}SyncSwitch(int seed) {')
+      ..writeln('    switch (seed & 3) {')
+      ..writeln('      case 0:')
+      ..writeln('        return seed ^ ${prefix}Seed;')
+      ..writeln('      case 1:')
+      ..writeln('        return seed + ${prefix}Seed;')
+      ..writeln('      case 2:')
+      ..writeln('        return seed - ${prefix}Seed;')
+      ..writeln('      default:')
+      ..writeln('        return seed;')
+      ..writeln('    }')
+      ..writeln('  }')
+      ..writeln();
+  }
+  for (final template in templates) {
+    buffer.write(_retainedTemplateSource(prefix, template));
+  }
+  return buffer.toString();
+}
+
+String _classInnerTemplateSuffix(String template) {
+  return switch (template) {
+    'async_future' => 'AsyncFuture',
+    'timer_stub' => 'TimerStub',
+    'file_io_stub' => 'FileIoStub',
+    'network_stub' => 'NetworkStub',
+    'platform_channel_stub' => 'PlatformChannelStub',
+    'navigator_stub' => 'NavigatorStub',
+    'set_state_stub' => 'SetStateStub',
+    'run_app_stub' => 'RunAppStub',
+    'debug_log_stub' => 'DebugLogStub',
+    _ => 'SyncHash',
+  };
+}
+
+List<String> _classInnerMemberNames(
+  String prefix,
+  List<String> templates,
+  String className,
+) {
+  return [
+    '$className.${prefix}Seed',
+    '$className.${prefix}Retain',
+    '$className.${prefix}SyncHash',
+    if (templates.contains('sync_switch')) '$className.${prefix}SyncSwitch',
+    for (final template in templates.where(
+        (template) => template != 'sync_hash' && template != 'sync_switch'))
+      '$className.$prefix${_classInnerTemplateSuffix(template)}',
+  ];
+}
+
+String _retainedTemplateSource(String prefix, String template) {
+  switch (template) {
+    case 'async_future':
+      return '''
+  static obf_async.Future<int> ${prefix}AsyncFuture(Object? seed) async {
+    final value = await obf_async.Future<int>.value(identityHashCode(seed));
+    return value ^ ${prefix}Seed;
+  }
+
+''';
+    case 'timer_stub':
+      return '''
+  static void ${prefix}TimerStub(Object? seed) {
+    obf_async.Timer(const Duration(milliseconds: 1), () {
+      obf_widgets.debugPrint(seed?.toString());
+    });
+  }
+
+''';
+    case 'file_io_stub':
+      return '''
+  static String ${prefix}FileIoStub(Object? seed) {
+    final file = obf_io.File(seed?.toString() ?? '');
+    return file.path;
+  }
+
+''';
+    case 'network_stub':
+      return '''
+  static Object ${prefix}NetworkStub(Object? seed) {
+    final client = obf_io.HttpClient();
+    client.userAgent = seed?.toString();
+    return client;
+  }
+
+''';
+    case 'platform_channel_stub':
+      return '''
+  static Object ${prefix}PlatformChannelStub(Object? seed) {
+    return obf_services.MethodChannel('obf.\${identityHashCode(seed)}');
+  }
+
+''';
+    case 'navigator_stub':
+      return '''
+  static Object ${prefix}NavigatorStub(obf_widgets.BuildContext context) {
+    return obf_widgets.Navigator.of(context);
+  }
+
+''';
+    case 'set_state_stub':
+      return '''
+  static void ${prefix}SetStateStub(dynamic state) {
+    state.setState(() {});
+  }
+
+''';
+    case 'run_app_stub':
+      return '''
+  static obf_widgets.Widget ${prefix}RunAppStub(Object? seed) {
+    const widget = obf_widgets.SizedBox.shrink();
+    obf_widgets.runApp(widget);
+    return widget;
+  }
+
+''';
+    case 'debug_log_stub':
+      return '''
+  static void ${prefix}DebugLogStub(Object? seed) {
+    obf_widgets.debugPrint(seed?.toString());
+  }
+
+''';
+    default:
+      return '';
+  }
+}
+
+String _classInnerHookSource(
+  String prefix, {
+  required String className,
+  required String methodName,
+  required bool isStatic,
+}) {
+  final localName = 'obfNoise${genRandomKey(6)}';
+  final seed = isStatic
+      ? "Object.hash('$className', '$methodName')"
+      : 'identityHashCode(this)';
+  return '''
+
+    final $localName = ${prefix}Retain($seed); $_classInnerHookMarker
+    if ($localName == -1) {
+      ${prefix}Retain($localName);
+    }
+''';
+}
+
+_ImportInsertions _classInnerImportInsertions(
+  CompilationUnit unit,
+  String source,
+  Set<String> neededImports, {
+  required bool hasFlutter,
+  required List<Map<String, dynamic>> skipped,
+  required String file,
+}) {
+  final importDirectives =
+      unit.directives.whereType<ImportDirective>().toList();
+  final existing = importDirectives
+      .map((directive) => _normalizeImportLine(
+            source.substring(directive.offset, directive.end),
+          ))
+      .whereType<String>()
+      .toSet();
+  final missing = <String>{};
+  for (final import in neededImports) {
+    if (_importSpecUri(import).startsWith('package:flutter/') && !hasFlutter) {
+      skipped.add({
+        'file': file,
+        'import': import,
+        'reason': 'missing_flutter_dependency',
+      });
+      continue;
+    }
+    if (!existing.contains(import)) {
+      missing.add(import);
+    }
+  }
+  if (missing.isEmpty) return _ImportInsertions([], {});
+  if (importDirectives.isEmpty) {
+    final lines = _sortImportSpecs(missing).map(_importLineFromSpec).join('\n');
+    return _ImportInsertions([_SourceInsertion(0, '$lines\n\n')], missing);
+  }
+
+  final firstOffset = importDirectives.first.offset;
+  final lastEnd = importDirectives.last.end;
+  final importSpecs = <String>{...existing, ...missing};
+  final lines =
+      _sortImportSpecs(importSpecs).map(_importLineFromSpec).join('\n');
+  final replacement = '$lines\n';
+  return _ImportInsertions(
+    [_SourceInsertion.replace(firstOffset, lastEnd, replacement)],
+    missing,
+  );
+}
+
+String _applyInsertions(String source, List<_SourceInsertion> insertions) {
+  final sorted = insertions.toList()
+    ..sort((a, b) => b.offset.compareTo(a.offset));
+  var updated = source;
+  for (final insertion in sorted) {
+    updated = updated.replaceRange(
+      insertion.offset,
+      insertion.endOffset,
+      insertion.text,
+    );
+  }
+  return updated;
+}
+
+String? _normalizeImportLine(String line) {
+  final match =
+      RegExp(r"import\s+'([^']+)'\s*(?:as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*;")
+          .firstMatch(line.trim());
+  if (match == null) return null;
+  final uri = match.group(1)!;
+  final prefix = match.group(2);
+  return prefix == null ? uri : '$uri as $prefix';
+}
+
+String _importSpecUri(String spec) {
+  final asIndex = spec.indexOf(' as ');
+  return asIndex == -1 ? spec : spec.substring(0, asIndex);
+}
+
+String _importLineFromSpec(String spec) {
+  final asIndex = spec.indexOf(' as ');
+  if (asIndex == -1) return "import '$spec';";
+  final uri = spec.substring(0, asIndex);
+  final prefix = spec.substring(asIndex + 4);
+  return "import '$uri' as $prefix;";
+}
+
+List<String> _sortImportSpecs(Iterable<String> specs) {
+  return specs.toList()
+    ..sort((a, b) {
+      final aRank = _importRank(a);
+      final bRank = _importRank(b);
+      if (aRank != bRank) return aRank.compareTo(bRank);
+      return a.compareTo(b);
+    });
+}
+
+int _importRank(String spec) {
+  final uri = _importSpecUri(spec);
+  if (uri.startsWith('dart:')) return 0;
+  if (uri.startsWith('package:')) return 1;
+  return 2;
 }
 
 String _timestamp() {
