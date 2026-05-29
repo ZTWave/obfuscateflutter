@@ -828,7 +828,7 @@ void main() {
           ])).readAsStringSync();
         }).toList();
         return contents.any((source) => source.contains('StatelessWidget')) &&
-            contents.any((source) => source.contains('class NoiseExtraWorker'));
+            contents.any((source) => source.contains('class NoiseWorker'));
       }),
       isTrue,
     );
@@ -858,9 +858,10 @@ void main() {
       projectDir.path,
       ...entryPath.split('/'),
     ])).readAsStringSync();
-    expect(entrySource, contains('dartNoiseShard'));
-    expect(entrySource, contains('dartNoiseExtraPage'));
-    expect(entrySource, contains('dartNoiseExtraWorker'));
+    expect(entrySource, contains('obfDartNoiseRetain'));
+    expect(entrySource, contains('dartNoisePageBridge'));
+    expect(entrySource, contains('dartNoiseWorkerBridge'));
+    expect(entrySource, contains('checksum ^='));
   });
 
   test('dart noise generation avoids single-file random directories', () {

@@ -1,11 +1,11 @@
 {
-  "pageCount": 6,
-  "classCount": 12,
-  "methodCountPerClass": 8,
+  "pageCount": 10,
+  "classCount": 20,
+  "methodCountPerClass": 6,
   "template": "page_sync_class",
   "outputDir": "lib/dart_noise",
-  "garbageFileCountMin": 30,
-  "garbageFileCountMax": 50,
+  "garbageFileCountMin": 100,
+  "garbageFileCountMax": 400,
   "snippets": [
     "widget_layout_page",
     "sync_math",
@@ -13,9 +13,53 @@
     "sync_list",
     "sync_model",
     "sync_enum_switch",
-    "custom_page_shell",
+    "custom_page_stack",
+    "custom_page_clip_rrect",
+    "custom_page_opacity",
+    "custom_page_gradient",
+    "custom_page_gesture",
+    "custom_page_scroll_row",
+    "custom_page_nested_column",
+    "custom_page_wrap_chips",
+    "custom_page_sizedbox_stack",
+    "custom_page_physical_model",
+    "custom_page_decorated_box",
+    "custom_page_linear_gradient",
+    "custom_page_transform",
+    "custom_page_align",
+    "custom_page_aspect_ratio",
+    "custom_page_fitted_box",
+    "custom_page_row_expanded",
+    "custom_page_column_align",
+    "custom_page_safe_area",
+    "custom_page_padding_column",
+    "custom_page_visibility",
+    "custom_page_border_container",
+    "custom_page_stack_align",
+    "custom_page_rotated_box",
+    "custom_page_overflow_box",
     "custom_sync_mix",
-    "custom_sync_hash"
+    "custom_sync_hash",
+    "custom_sync_hex_parse",
+    "custom_sync_xor_loop",
+    "custom_sync_loop_sum",
+    "custom_sync_floor_rem",
+    "custom_sync_unique_set",
+    "custom_sync_ceil_div",
+    "custom_sync_random_exclude",
+    "custom_sync_cond_branch",
+    "custom_sync_switch_case",
+    "custom_sync_chained_div",
+    "custom_sync_modulo_shift",
+    "custom_sync_bit_rotate",
+    "custom_sync_list_fold",
+    "custom_sync_count_if",
+    "custom_sync_fnv_like",
+    "custom_sync_int_pow",
+    "custom_sync_digit_sum",
+    "custom_sync_lcg_step",
+    "custom_sync_string_code_units",
+    "custom_sync_coord_math"
   ],
   "snippetWeights": {
     "widget_layout_page": 2,
@@ -24,8 +68,53 @@
     "sync_list": 2,
     "sync_model": 2,
     "sync_enum_switch": 1,
-    "custom_sync_mix": 2,
-    "custom_sync_hash": 2
+    "custom_page_stack": 2,
+    "custom_page_clip_rrect": 3,
+    "custom_page_opacity": 4,
+    "custom_page_gradient": 1,
+    "custom_page_gesture": 3,
+    "custom_page_scroll_row": 4,
+    "custom_page_nested_column": 1,
+    "custom_page_wrap_chips": 3,
+    "custom_page_sizedbox_stack": 1,
+    "custom_page_physical_model": 3,
+    "custom_page_decorated_box": 3,
+    "custom_page_linear_gradient": 3,
+    "custom_page_transform": 4,
+    "custom_page_align": 5,
+    "custom_page_aspect_ratio": 5,
+    "custom_page_fitted_box": 6,
+    "custom_page_row_expanded": 2,
+    "custom_page_column_align": 3,
+    "custom_page_safe_area": 4,
+    "custom_page_padding_column": 5,
+    "custom_page_visibility": 2,
+    "custom_page_border_container": 3,
+    "custom_page_stack_align": 3,
+    "custom_page_rotated_box": 3,
+    "custom_page_overflow_box": 2,
+    "custom_sync_mix": 1,
+    "custom_sync_hash": 2,
+    "custom_sync_hex_parse": 3,
+    "custom_sync_xor_loop": 1,
+    "custom_sync_loop_sum": 2,
+    "custom_sync_floor_rem": 1,
+    "custom_sync_unique_set": 5,
+    "custom_sync_ceil_div": 3,
+    "custom_sync_random_exclude": 1,
+    "custom_sync_cond_branch": 1,
+    "custom_sync_switch_case": 2,
+    "custom_sync_chained_div": 3,
+    "custom_sync_modulo_shift": 1,
+    "custom_sync_bit_rotate": 2,
+    "custom_sync_list_fold": 3,
+    "custom_sync_count_if": 2,
+    "custom_sync_fnv_like": 3,
+    "custom_sync_int_pow": 2,
+    "custom_sync_digit_sum": 1,
+    "custom_sync_lcg_step": 3,
+    "custom_sync_string_code_units": 1,
+    "custom_sync_coord_math": 2
   },
   "classInnerNoise": {
     "enabled": true,
@@ -60,8 +149,104 @@
   "customTemplates": {
     "pageBodies": [
       {
-        "id": "custom_page_shell",
-        "body": "return const DecoratedBox(\n  decoration: BoxDecoration(),\n  child: Padding(\n    padding: EdgeInsets.all({{padding}}),\n    child: SizedBox(width: {{width}}, height: {{height}}),\n  ),\n);"
+        "id": "custom_page_stack",
+        "body": "final children = <Widget>[];\nfor (int i = 0; i < 3; i++) {\n  children.add(\n    Positioned(\n      top: (i * {{padding}} + {{height}} * 0.1 * i),\n      left: (i * {{padding}} + {{width}} * 0.1 * i),\n      child: Container(\n        width: {{width}} * 0.3,\n        height: {{height}} * 0.3,\n        decoration: BoxDecoration(\n          color: const Color(0xFF948DFE),\n          borderRadius: BorderRadius.circular({{padding}}),\n        ),\n      ),\n    ),\n  );\n}\nreturn SizedBox(\n  width: {{width}},\n  height: {{height}},\n  child: Stack(children: children),\n);"
+      },
+      {
+        "id": "custom_page_clip_rrect",
+        "body": "return ClipRRect(\n  borderRadius: BorderRadius.circular({{padding}} + 4),\n  child: Container(\n    width: {{width}},\n    height: {{height}},\n    decoration: const BoxDecoration(\n      gradient: LinearGradient(\n        begin: Alignment.topLeft,\n        end: Alignment.bottomRight,\n        colors: [Color(0xFFF465FC), Color(0xFF948DFE)],\n      ),\n    ),\n    child: Center(\n      child: SizedBox(\n        width: {{width}} * 0.5,\n        height: {{height}} * 0.5,\n        child: const DecoratedBox(\n          decoration: BoxDecoration(\n            color: Color(0x33FFFFFF),\n            shape: BoxShape.circle,\n          ),\n        ),\n      ),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_opacity",
+        "body": "final isActive = ({{width}} + {{height}}) % 3 == 0;\nreturn Opacity(\n  opacity: isActive ? 1.0 : 0.5,\n  child: Container(\n    width: {{width}},\n    height: {{height}},\n    alignment: Alignment.center,\n    decoration: BoxDecoration(\n      borderRadius: BorderRadius.all(Radius.circular({{padding}} + 8)),\n      gradient: const LinearGradient(\n        begin: Alignment.centerLeft,\n        end: Alignment.centerRight,\n        colors: [Color(0xFFDC59EE), Color(0xFFA34EFA)],\n      ),\n    ),\n    child: const Text(\n      'sample text',\n      style: TextStyle(fontSize: 14, color: Color(0xFFFFFFFF)),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_gradient",
+        "body": "return Container(\n  width: {{width}},\n  height: {{height}},\n  decoration: BoxDecoration(\n    borderRadius: BorderRadius.circular({{padding}}),\n    gradient: const LinearGradient(\n      begin: Alignment.topCenter,\n      end: Alignment.bottomCenter,\n      colors: [Color(0xFF8954E7), Color(0xFFD15FF1), Color(0xFFF465FC)],\n      stops: [0.0, 0.5, 1.0],\n    ),\n    boxShadow: [\n      BoxShadow(\n        color: const Color(0xFF8954E7).withOpacity(0.3),\n        blurRadius: {{padding}} + 2,\n        offset: Offset(0, {{padding}} * 0.5),\n      ),\n    ],\n  ),\n  child: const Center(\n    child: Text(\n      'gradient box',\n      style: TextStyle(\n        fontSize: 15,\n     fontWeight: FontWeight.w600,\n      ),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_gesture",
+        "body": "return GestureDetector(\n  onTap: () {},\n  child: Container(\n    width: {{width}},\n    height: {{height}},\n    padding: EdgeInsets.all({{padding}}),\n    decoration: BoxDecoration(\n      color: const Color(0xFFF5F5F5),\n      borderRadius: BorderRadius.circular({{padding}}),\n      border: Border.all(\n        color: const Color(0xFFEBEBEB),\n        width: 0.5,\n      ),\n    ),\n    child: Row(\n      mainAxisAlignment: MainAxisAlignment.center,\n      children: [\n        Container(\n          width: {{padding}} * 2,\n          height: {{padding}} * 2,\n          decoration: const BoxDecoration(\n            color: Color(0xFFDA7BF7),\n            shape: BoxShape.circle,\n          ),\n        ),\n        SizedBox(width: {{padding}}),\n        const Text(\n          'tap region',\n          style: TextStyle(fontSize: 13, color: Color(0xFF333333)),\n        ),\n      ],\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_scroll_row",
+        "body": "return SizedBox(\n  width: {{width}},\n  height: {{height}},\n  child: SingleChildScrollView(\n    scrollDirection: Axis.horizontal,\n    child: Row(\n      mainAxisSize: MainAxisSize.min,\n      children: List.generate(6, (i) {\n        return Container(\n          width: {{width}} * 0.25,\n          height: {{height}} * 0.8,\n          margin: EdgeInsets.symmetric(horizontal: {{padding}} * 0.5),\n          decoration: BoxDecoration(\n            color: const Color(0xFF948DFE).withOpacity(0.1 * (i + 1)),\n            borderRadius: BorderRadius.circular({{padding}}),\n          ),\n          child: Center(\n            child: Text(\n              '$i',\n              style: const TextStyle(\n                fontSize: 16,\n                color: Color(0xFF8954E7),\n                fontWeight: FontWeight.bold,\n              ),\n            ),\n          ),\n        );\n      }),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_nested_column",
+        "body": "return Column(\n  mainAxisSize: MainAxisSize.min,\n  crossAxisAlignment: CrossAxisAlignment.start,\n  children: [\n    Container(\n      width: {{width}},\n      height: {{height}} * 0.25,\n      margin: EdgeInsets.only(bottom: {{padding}}),\n      decoration: BoxDecoration(\n        color: const Color(0xFFF465FC).withOpacity(0.15),\n        borderRadius: BorderRadius.only(\n          topLeft: Radius.circular({{padding}}),\n          topRight: Radius.circular({{padding}}),\n        ),\n      ),\n    ),\n    Row(\n      mainAxisAlignment: MainAxisAlignment.spaceBetween,\n      children: [\n        Container(\n          width: {{width}} * 0.45,\n          height: {{height}} * 0.4,\n          decoration: BoxDecoration(\n            color: const Color(0xFF8954E7).withOpacity(0.2),\n            borderRadius: BorderRadius.circular({{padding}}),\n          ),\n        ),\n        Container(\n          width: {{width}} * 0.45,\n          height: {{height}} * 0.4,\n          decoration: BoxDecoration(\n            color: const Color(0xFFD15FF1).withOpacity(0.2),\n            borderRadius: BorderRadius.circular({{padding}}),\n          ),\n        ),\n      ],\n    ),\n    SizedBox(height: {{padding}}),\n    Container(\n      width: {{width}},\n      height: {{height}} * 0.2,\n      decoration: BoxDecoration(\n        color: const Color(0xFFA34EFA).withOpacity(0.1),\n        borderRadius: BorderRadius.only(\n          bottomLeft: Radius.circular({{padding}}),\n          bottomRight: Radius.circular({{padding}}),\n        ),\n      ),\n    ),\n  ],\n);"
+      },
+      {
+        "id": "custom_page_wrap_chips",
+        "body": "final items = List.generate(8, (i) => 'tag_$i');\nfinal selected = ({{width}}.toInt() + {{height}}.toInt()) % items.length;\nreturn SizedBox(\n  width: {{width}},\n  height: {{height}},\n  child: Wrap(\n    spacing: {{padding}} * 0.5,\n    runSpacing: {{padding}} * 0.3,\n    alignment: WrapAlignment.start,\n    children: items.asMap().entries.map((entry) {\n      final i = entry.key;\n      final label = entry.value;\n      final isSelected = i == selected;\n      return Container(\n        padding: EdgeInsets.symmetric(\n          horizontal: {{padding}} * 0.8,\n          vertical: {{padding}} * 0.3,\n        ),\n        decoration: BoxDecoration(\n          color: isSelected ? const Color(0xFFDA7BF7) : const Color(0xFFFFFFFF),\n          borderRadius: BorderRadius.all(Radius.circular({{padding}} + 6)),\n          border: Border.all(\n            color: isSelected ? const Color(0xFFDA7BF7) : const Color(0xFFEBEBEB),\n            width: 0.5,\n          ),\n        ),\n        child: Text(\n          label,\n          style: TextStyle(\n            fontSize: 12,\n            ),\n        ),\n      );\n    }).toList(),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_sizedbox_stack",
+        "body": "return SizedBox(\n  width: {{width}},\n  height: {{height}},\n  child: Stack(\n    children: [\n      Positioned(\n        top: 0,\n        left: 0,\n        child: Container(\n          width: {{width}} * 0.6,\n          height: {{height}} * 0.6,\n          decoration: BoxDecoration(\n            color: const Color(0xFF948DFE),\n            borderRadius: BorderRadius.circular({{padding}}),\n          ),\n        ),\n      ),\n      Positioned(\n        bottom: 0,\n        right: 0,\n        child: Container(\n          width: {{width}} * 0.5,\n          height: {{height}} * 0.5,\n          decoration: BoxDecoration(\n            color: const Color(0xFFF465FC),\n            borderRadius: BorderRadius.circular({{padding}}),\n          ),\n        ),\n      ),\n      Positioned(\n        top: {{height}} * 0.3,\n        left: {{width}} * 0.3,\n        child: Container(\n          width: {{width}} * 0.4,\n          height: {{height}} * 0.4,\n          decoration: BoxDecoration(\n            color: const Color(0xFFD15FF1).withOpacity(0.8),\n            shape: BoxShape.circle,\n          ),\n        ),\n      ),\n    ],\n  ),\n);"
+      },
+      {
+        "id": "custom_page_physical_model",
+        "body": "return PhysicalModel(\n  color: const Color(0xFFF5F5F5),\n  borderRadius: BorderRadius.circular({{padding}}),\n  clipBehavior: Clip.antiAlias,\n  elevation: {{padding}} * 0.3,\n  shadowColor: const Color(0x33000000),\n  child: Container(\n    width: {{width}},\n    height: {{height}},\n    padding: EdgeInsets.all({{padding}}),\n    child: Column(\n      mainAxisAlignment: MainAxisAlignment.center,\n      crossAxisAlignment: CrossAxisAlignment.center,\n      children: [\n        Container(\n          width: {{width}} * 0.3,\n          height: {{padding}} * 0.6,\n          decoration: BoxDecoration(\n            color: const Color(0xFFDC59EE),\n            borderRadius: BorderRadius.circular({{padding}} * 0.3),\n          ),\n        ),\n        SizedBox(height: {{padding}} * 0.4),\n        Container(\n          width: {{width}} * 0.5,\n          height: {{padding}} * 0.6,\n          decoration: BoxDecoration(\n            color: const Color(0xFFA34EFA),\n            borderRadius: BorderRadius.circular({{padding}} * 0.3),\n          ),\n        ),\n      ],\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_decorated_box",
+        "body": "return DecoratedBox(\n  decoration: BoxDecoration(\n    color: const Color(0xFFF465FC).withOpacity(0.1),\n    border: Border.all(\n      color: const Color(0xFFF465FC).withOpacity(0.3),\n      width: 1,\n    ),\n    borderRadius: BorderRadius.only(\n      topLeft: Radius.circular({{padding}} + 4),\n      bottomRight: Radius.circular({{padding}} + 4),\n    ),\n  ),\n  child: Padding(\n    padding: EdgeInsets.all({{padding}}),\n    child: SizedBox(\n      width: {{width}},\n      height: {{height}},\n      child: const Center(\n        child: Text(\n          'decorated',\n          style: TextStyle(\n            fontSize: 14,\n            color: Color(0xFF8954E7),\n            letterSpacing: 1.2,\n          ),\n        ),\n      ),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_linear_gradient",
+        "body": "return Container(\n  width: {{width}},\n  height: {{height}},\n  decoration: BoxDecoration(\n    borderRadius: BorderRadius.circular({{padding}}),\n    gradient: const LinearGradient(\n      begin: Alignment.topLeft,\n      end: Alignment.bottomRight,\n      colors: [\n        Color(0xFFDC59EE),\n        Color(0xFFA34EFA),\n        Color(0xFF948DFE),\n      ],\n      stops: [0.0, 0.4, 1.0],\n    ),\n  ),\n  child: Padding(\n    padding: EdgeInsets.symmetric(\n      horizontal: {{padding}},\n      vertical: {{padding}} * 0.5,\n    ),\n    child: Row(\n      mainAxisAlignment: MainAxisAlignment.spaceBetween,\n      children: [\n        Container(\n          width: {{padding}} * 1.5,\n          height: {{padding}} * 1.5,\n          decoration: const BoxDecoration(\n            color: Color(0x4DFFFFFF),\n            shape: BoxShape.circle,\n          ),\n        ),\n        Text(\n          'gradient row',\n          style: TextStyle(\n            fontSize: 15,\n            color: Color(0xFF1465FC).withOpacity(0.1),\n            fontWeight: FontWeight.w500,\n          ),\n        ),\n        Container(\n          width: {{padding}} * 1.5,\n          height: {{padding}} * 1.5,\n          decoration: const BoxDecoration(\n            color: Color(0x33FFFFFF),\n            shape: BoxShape.circle,\n          ),\n        ),\n      ],\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_transform",
+        "body": "return Transform.scale(\n  scale: 0.9 + ({{width}} % 10) * 0.02,\n  child: Container(\n    width: {{width}},\n    height: {{height}},\n    decoration: BoxDecoration(\n      color: const Color(0xFF8954E7),\n      borderRadius: BorderRadius.all(\n        Radius.circular({{padding}} + 2),\n      ),\n      boxShadow: [\n        BoxShadow(\n          color: const Color(0xFF8954E7).withOpacity(0.4),\n          blurRadius: {{padding}},\n          offset: Offset(0, {{padding}} * 0.3),\n        ),\n      ],\n    ),\n    child: Center(\n      child: Text(\n        'scaled',\n        style: TextStyle(\n          fontSize: 16,\n          color:  Color(0xFF14AAFC).withOpacity(0.4),\n          fontWeight: FontWeight.bold,\n        ),\n      ),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_align",
+        "body": "return SizedBox(\n  width: {{width}},\n  height: {{height}},\n  child: Container(\n    decoration: BoxDecoration(\n      color: const Color(0xFFF8F8F8),\n      borderRadius: BorderRadius.circular({{padding}}),\n      border: Border.all(color: const Color(0xFFEEEEEE), width: 0.5),\n    ),\n    child: Align(\n      alignment: Alignment(\n        ({{width}} % 3 - 1) * 0.5,\n        ({{height}} % 3 - 1) * 0.5,\n      ),\n      child: Container(\n        width: {{width}} * 0.2,\n        height: {{height}} * 0.2,\n        decoration: const BoxDecoration(\n          color: Color(0xFFDA7BF7),\n          shape: BoxShape.circle,\n        ),\n      ),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_aspect_ratio",
+        "body": "return AspectRatio(\n  aspectRatio: 16 / 9,\n  child: Container(\n    width: {{width}},\n    height: {{height}},\n    decoration: BoxDecoration(\n      color: const Color(0xFF2D2D2D),\n      borderRadius: BorderRadius.circular({{padding}}),\n    ),\n    child: Stack(\n      children: [\n        Center(\n          child: Container(\n            width: {{padding}} * 3,\n            height: {{padding}} * 3,\n            decoration: BoxDecoration(\n              shape: BoxShape.circle,\n              border: Border.all(\n                color: const Color(0xCCFFFFFF),\n                width: 2,\n              ),\n            ),\n            child: const Center(\n              child:  SizeBox(),\n          ),\n          ),\n        ),\n      ],\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_fitted_box",
+        "body": "return SizedBox(\n  width: {{width}},\n  height: {{height}},\n  child: FittedBox(\n    fit: BoxFit.contain,\n    child: Container(\n      width: {{width}} * 1.4,\n      height: {{height}} * 1.4,\n      decoration: BoxDecoration(\n        borderRadius: BorderRadius.circular({{padding}}),\n        gradient: const LinearGradient(\n          begin: Alignment.centerLeft,\n          end: Alignment.centerRight,\n          colors: [Color(0xFFF465FC), Color(0xFF948DFE)],\n        ),\n      ),\n      child: Center(\n        child: SizedBox(\n          width: {{width}} * 0.5,\n          height: {{height}} * 0.5,\n          child: const DecoratedBox(\n            decoration: BoxDecoration(\n              color: Color(0x4DFFFFFF),\n              shape: BoxShape.circle,\n            ),\n          ),\n        ),\n      ),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_row_expanded",
+        "body": "return SizedBox(\n  width: {{width}},\n  height: {{height}},\n  child: Row(\n    children: [\n      Expanded(\n        flex: 3,\n        child: Container(\n          margin: EdgeInsets.only(right: {{padding}} * 0.5),\n          decoration: BoxDecoration(\n            color: const Color(0xFFDC59EE).withOpacity(0.2),\n            borderRadius: BorderRadius.circular({{padding}}),\n          ),\n          child: Center(\n            child: Text(\n              '${({{width}} * 0.6).toInt()}',\n              style: const TextStyle(\n                fontSize: 14,\n                color: Color(0xFF8954E7),\n              ),\n            ),\n          ),\n        ),\n      ),\n      Expanded(\n        flex: 2,\n        child: Container(\n          decoration: BoxDecoration(\n            color: const Color(0xFFA34EFA).withOpacity(0.2),\n            borderRadius: BorderRadius.circular({{padding}}),\n          ),\n          child: Center(\n            child: Text(\n              '${({{height}} * 0.6).toInt()}',\n              style: const TextStyle(\n                fontSize: 14,\n                color: Color(0xFFD15FF1),\n              ),\n            ),\n          ),\n        ),\n      ),\n    ],\n  ),\n);"
+      },
+      {
+        "id": "custom_page_column_align",
+        "body": "return Container(\n  width: {{width}},\n  height: {{height}},\n  padding: EdgeInsets.all({{padding}}),\n  decoration: BoxDecoration(\n    color: const Color(0xFFF6A763).withOpacity(0.9),\n    borderRadius: BorderRadius.circular({{padding}}),\n    boxShadow: [\n      BoxShadow(\n        color: const Color(0xFF000000).withOpacity(0.05),\n        blurRadius: {{padding}} * 0.5,\n        offset: Offset(0, {{padding}} * 0.15),\n      ),\n    ],\n  ),\n  child: Column(\n    mainAxisAlignment: MainAxisAlignment.spaceEvenly,\n    crossAxisAlignment: CrossAxisAlignment.start,\n    children: [\n      Row(\n        mainAxisAlignment: MainAxisAlignment.spaceBetween,\n        children: [\n          const Text(\n            'row label',\n            style: TextStyle(fontSize: 14, color: Color(0xFF333333)),\n          ),\n          Container(\n            width: {{padding}},\n            height: {{padding}},\n            decoration: const BoxDecoration(\n              color: Color(0xFFDA7BF7),\n              shape: BoxShape.circle,\n            ),\n          ),\n        ],\n      ),\n      Row(\n        mainAxisAlignment: MainAxisAlignment.spaceBetween,\n        children: [\n          const Text(\n            'row value',\n            style: TextStyle(fontSize: 13, color: Color(0xFF8F8F8F)),\n          ),\n          SizedBox(width: 48, height: 26,\n            child: DecoratedBox(\n              decoration: BoxDecoration(\n                color: const Color(0xFFF465FC).withOpacity(0.15),\n                borderRadius: BorderRadius.circular(13),\n              ),\n              child: const Center(\n                child: Text(\n                  'ok',\n                  style: TextStyle(fontSize: 11, color: Color(0xFFDC59EE)),\n                ),\n              ),\n            ),\n          ),\n        ],\n      ),\n    ],\n  ),\n);"
+      },
+      {
+        "id": "custom_page_safe_area",
+        "body": "return Container(\n  width: {{width}},\n  height: {{height}},\n  color: const Color(0xFF111111).withOpacity(0.05),\n  alignment: Alignment.center,\n  child: SafeArea(\n    child: Container(\n      width: {{width}} * 0.8,\n      height: {{height}} * 0.7,\n      decoration: BoxDecoration(\n        color: const Color(0xFFFFFFFFF),\n        borderRadius: BorderRadius.circular({{padding}}),\n        border: Border.all(\n          color: const Color(0xFFEEEEEE),\n          width: 0.5,\n        ),\n      ),\n      child: Column(\n        mainAxisAlignment: MainAxisAlignment.center,\n        children: [\n          Container(\n            width: {{padding}} * 2,\n            height: {{padding}} * 0.35,\n            decoration: BoxDecoration(\n              color: const Color(0xFFEBEBEB),\n              borderRadius: BorderRadius.circular({{padding}} * 0.18),\n            ),\n          ),\n          SizedBox(height: {{padding}} * 0.5),\n          Container(\n            width: {{padding}} * 3,\n            height: {{padding}} * 0.35,\n            decoration: BoxDecoration(\n              color: const Color(0xFFEBEBEB),\n              borderRadius: BorderRadius.circular({{padding}} * 0.18),\n            ),\n          ),\n        ],\n      ),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_padding_column",
+        "body": "return Padding(\n  padding: EdgeInsets.symmetric(\n    horizontal: {{padding}},\n    vertical: {{padding}} * 0.6,\n  ),\n  child: SizedBox(\n    width: {{width}},\n    height: {{height}},\n    child: Column(\n      mainAxisSize: MainAxisSize.min,\n      crossAxisAlignment: CrossAxisAlignment.start,\n      children: [\n        Container(\n          width: {{width}} * 0.6,\n          height: {{padding}} * 0.4,\n          decoration: BoxDecoration(\n            color: const Color(0xFFDC59EE).withOpacity(0.2),\n            borderRadius: BorderRadius.circular({{padding}} * 0.2),\n          ),\n        ),\n        SizedBox(height: {{padding}} * 0.5),\n        Container(\n          width: {{width}} * 0.9,\n          height: {{padding}} * 0.3,\n          decoration: BoxDecoration(\n            color: const Color(0xFF948DFE).withOpacity(0.15),\n            borderRadius: BorderRadius.circular({{padding}} * 0.15),\n          ),\n        ),\n        SizedBox(height: {{padding}} * 0.3),\n        Container(\n          width: {{width}} * 0.7,\n          height: {{padding}} * 0.3,\n          decoration: BoxDecoration(\n            color: const Color(0xFFF465FC).withOpacity(0.1),\n            borderRadius: BorderRadius.circular({{padding}} * 0.15),\n          ),\n        ),\n      ],\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_visibility",
+        "body": "final showExtra = ({{width}}.toInt() + {{height}}.toInt()) % 2 == 0;\nreturn SizedBox(\n  width: {{width}},\n  height: {{height}},\n  child: Column(\n    mainAxisAlignment: MainAxisAlignment.center,\n    children: [\n      Container(\n        width: {{width}},\n        height: {{height}} * 0.35,\n        decoration: BoxDecoration(\n          color: const Color(0xFF8954E7).withOpacity(0.15),\n          borderRadius: BorderRadius.circular({{padding}}),\n        ),\n        child: const Center(\n          child: Text(\n            'primary',\n            style: TextStyle(fontSize: 13, color: Color(0xFF8954E7)),\n          ),\n        ),\n      ),\n      Visibility(\n        visible: showExtra,\n        child: Container(\n          width: {{width}},\n          height: {{height}} * 0.2,\n          margin: EdgeInsets.only(top: {{padding}} * 0.4),\n          decoration: BoxDecoration(\n            color: const Color(0xFFD15FF1).withOpacity(0.1),\n            borderRadius: BorderRadius.circular({{padding}}),\n          ),\n          child: const Center(\n            child: Text(\n              'extra',\n              style: TextStyle(fontSize: 12, color: Color(0xFFD15FF1)),\n            ),\n          ),\n        ),\n      ),\n    ],\n  ),\n);"
+      },
+      {
+        "id": "custom_page_border_container",
+        "body": "return Container(\n  width: {{width}},\n  height: {{height}},\n  decoration: BoxDecoration(\n    color: const Color(0xFFF12322).withOpacity(0.93),\n    borderRadius: BorderRadius.circular({{padding}}),\n    border: Border(\n      top: BorderSide(\n        color: const Color(0xFFF465FC).withOpacity(0.4),\n        width: {{padding}} * 0.2,\n      ),\n      left: BorderSide(\n        color: const Color(0xFF948DFE).withOpacity(0.3),\n        width: {{padding}} * 0.15,\n      ),\n      right: BorderSide(\n        color: const Color(0xFFDC59EE).withOpacity(0.25),\n        width: {{padding}} * 0.12,\n      ),\n      bottom: BorderSide(\n        color: const Color(0xFFA34EFA).withOpacity(0.2),\n        width: {{padding}} * 0.1,\n      ),\n    ),\n  ),\n  child: Center(\n    child: Row(\n      mainAxisSize: MainAxisSize.min,\n      children: [\n        Container(\n          width: {{padding}} * 0.8,\n          height: {{padding}} * 0.8,\n          decoration: const BoxDecoration(\n            color: Color(0xFFDA7BF7),\n            shape: BoxShape.circle,\n          ),\n        ),\n        SizedBox(width: {{padding}} * 0.5),\n        Container(\n          width: {{padding}} * 0.8,\n          height: {{padding}} * 0.8,\n          decoration: const BoxDecoration(\n            color: Color(0xFF8954E7),\n            shape: BoxShape.circle,\n          ),\n        ),\n      ],\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_stack_align",
+        "body": "return Container(\n  width: {{width}},\n  height: {{height}},\n  decoration: BoxDecoration(\n    color: const Color(0xFF2A2A2A),\n    borderRadius: BorderRadius.circular({{padding}}),\n  ),\n  child: Stack(\n    alignment: Alignment.center,\n    children: [\n      Positioned(\n        top: {{padding}},\n        left: {{padding}},\n        child: Container(\n          width: {{width}} * 0.22,\n          height: {{height}} * 0.22,\n          decoration: BoxDecoration(\n            color: const Color(0xFFF465FC).withOpacity(0.6),\n            borderRadius: BorderRadius.circular({{padding}} * 0.3),\n          ),\n        ),\n      ),\n      Positioned(\n        bottom: {{padding}},\n        right: {{padding}},\n        child: Container(\n          width: {{width}} * 0.35,\n          height: {{height}} * 0.35,\n          decoration: BoxDecoration(\n            color: const Color(0xFF948DFE).withOpacity(0.5),\n            borderRadius: BorderRadius.circular({{padding}} * 0.3),\n          ),\n        ),\n      ),\n      Align(\n        alignment: Alignment.center,\n        child: Container(\n          width: {{padding}} * 1.2,\n          height: {{padding}} * 1.2,\n          decoration: const BoxDecoration(\n            color: Color(0xCCFFFFFF),\n            shape: BoxShape.circle,\n          ),\n        ),\n      ),\n    ],\n  ),\n);"
+      },
+      {
+        "id": "custom_page_rotated_box",
+        "body": "return SizedBox(\n  width: {{width}},\n  height: {{height}},\n  child: Center(\n    child: RotatedBox(\n      quarterTurns: ({{width}}.toInt() + {{height}}.toInt()) % 4,\n      child: Container(\n        width: {{width}} * 0.5,\n        height: {{height}} * 0.5,\n        decoration: BoxDecoration(\n          gradient: const LinearGradient(\n            begin: Alignment.topLeft,\n            end: Alignment.bottomRight,\n            colors: [Color(0xFFF465FC), Color(0xFFA34EFA)],\n          ),\n          borderRadius: BorderRadius.only(\n            topLeft: Radius.circular({{padding}}),\n            bottomRight: Radius.circular({{padding}}),\n          ),\n        ),\n        child: Center(\n          child: Container(\n            width: {{padding}},\n            height: {{padding}},\n            decoration: const BoxDecoration(\n              color: Color(0x66FFFFFF),\n              shape: BoxShape.circle,\n            ),\n          ),\n        ),\n      ),\n    ),\n  ),\n);"
+      },
+      {
+        "id": "custom_page_overflow_box",
+        "body": "return OverflowBox(\n  minWidth: {{width}} * 0.5,\n  maxWidth: {{width}} * 1.5,\n  minHeight: {{height}} * 0.5,\n  maxHeight: {{height}} * 1.5,\n  child: Container(\n    width: {{width}} * 0.8,\n    height: {{height}} * 0.8,\n    decoration: BoxDecoration(\n      color: const Color(0xFFF5F5F5),\n      borderRadius: BorderRadius.circular({{padding}}),\n      border: Border.all(\n        color: const Color(0xFFE0E0E0),\n        width: 0.5,\n      ),\n    ),\n    child: Center(\n      child: Column(\n        mainAxisSize: MainAxisSize.min,\n        children: [\n          Container(\n            width: {{width}} * 0.35,\n            height: {{padding}} * 0.3,\n            decoration: BoxDecoration(\n              color: const Color(0xFF8954E7).withOpacity(0.3),\n              borderRadius: BorderRadius.circular({{padding}} * 0.15),\n            ),\n          ),\n          SizedBox(height: {{padding}} * 0.3),\n          Container(\n            width: {{width}} * 0.25,\n            height: {{padding}} * 0.3,\n            decoration: BoxDecoration(\n              color: const Color(0xFFD15FF1).withOpacity(0.3),\n              borderRadius: BorderRadius.circular({{padding}} * 0.15),\n            ),\n          ),\n        ],\n      ),\n    ),\n  ),\n);"
       }
     ],
     "methodBodies": [
@@ -72,6 +257,86 @@
       {
         "id": "custom_sync_hash",
         "body": "final text = 'k{{salt}}_' + input.toString() + '_' + seed.toString();\nvar hash = seed;\nfor (final unit in text.codeUnits) {\n  hash = ((hash * 31) + unit + {{salt}}) & 0x3fffffff;\n}\nreturn hash;"
+      },
+      {
+        "id": "custom_sync_hex_parse",
+        "body": "final hexStr = 'a{{salt}}${input.abs() % 256}'.toUpperCase();\nvar result = 0;\nfor (int i = 0; i < hexStr.length; i++) {\n  final c = hexStr.codeUnitAt(i);\n  final val = (c >= 65) ? (c - 55) : (c - 48);\n  result = result * 16 + val;\n}\nreturn (result * seed + {{salt}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_xor_loop",
+        "body": "final key = (seed + {{salt}}) & 0xFF;\nvar result = 0;\nfinal data = [input, seed, {{salt}}, input ^ seed, (input + {{salt}}) & 0xFF];\nfor (int i = 0; i < data.length; i++) {\n  final msgByte = data[i] & 0xFF;\n  final keyByte = ((key << {{shift}}) ^ key) & 0xFF;\n  result = ((result << 3) ^ (msgByte ^ keyByte) + {{salt}}) & 0x3fffffff;\n}\nreturn result;"
+      },
+      {
+        "id": "custom_sync_loop_sum",
+        "body": "final n = 3 + ({{salt}} % 7);\nvar total = seed;\nfor (int i = 0; i < n; i++) {\n  final term = (input + i * {{salt}} + seed * (i + 1)) & 0xFFFF;\n  total = ((total << {{shift}}) ^ term + {{salt}}) & 0x3fffffff;\n}\nreturn total;"
+      },
+      {
+        "id": "custom_sync_floor_rem",
+        "body": "final n = ({{salt}} % 5) + 2;\nfinal per = ({{salt}} % 3) + 3;\nfinal fullRows = n ~/ per;\nfinal remaining = n % per;\nfinal row = input % (fullRows + 1);\nif (row < fullRows) {\n  return (per * seed + {{salt}}) & 0x3fffffff;\n} else if (row == fullRows) {\n  return (remaining * seed + {{salt}}) & 0x3fffffff;\n} else {\n  return (seed + {{salt}}) & 0x3fffffff;\n}"
+      },
+      {
+        "id": "custom_sync_unique_set",
+        "body": "final numericStr = input.abs().toString() + seed.abs().toString();\nfinal uniqueSet = <int>{};\nfor (int i = 0; i < numericStr.length; i++) {\n  uniqueSet.add(numericStr.codeUnitAt(i));\n}\nreturn ((uniqueSet.length * {{salt}} + seed) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_ceil_div",
+        "body": "final total = (input.abs() % 50) + {{salt}};\nfinal limit = ((seed % 7) + 2 + {{salt}} % 6);\nfinal quotient = total / limit;\nfinal num = quotient.ceil();\nfinal remainder = total % limit;\nreturn ((num * {{salt}} + remainder * seed) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_random_exclude",
+        "body": "final length = 3 + ({{salt}} % 8);\nfinal exclude = input % length;\nvar candidate = seed % length;\nif (length == 1) {\n  return (candidate * {{salt}}) & 0x3fffffff;\n}\nvar rounds = 0;\nwhile (candidate == exclude && rounds < length * 2) {\n  candidate = ((candidate + 1 + {{salt}}) % length);\n  rounds++;\n}\nreturn ((candidate * {{salt}} + seed) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_cond_branch",
+        "body": "final val = input.abs();\nfinal n = {{salt}} % 20;\nif (val == 0) {\n  return ((seed * n) << {{shift}}) & 0x3fffffff;\n}\nif (val >= 1 && val <= 3 + (n % 5)) {\n  return ((seed + n) << {{shift}}) & 0x3fffffff;\n}\nreturn ((val - 1 + n * seed) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_switch_case",
+        "body": "final sel = (input + {{salt}}) % 5;\nvar n = 0;\nswitch (sel) {\n  case 0:\n    n = 7 + (seed % 3);\n    break;\n  case 1:\n    n = 13 + (seed % 5);\n    break;\n  case 2:\n  case 3:\n    n = 3 + ({{salt}} % 4);\n    break;\n  default:\n    n = 1 + (seed % 2);\n    break;\n}\nreturn ((n * {{salt}} + seed) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_chained_div",
+        "body": "var value = input.abs() + {{salt}};\nfinal a = value % 256;\nvalue = value >> 8;\nfinal b = value % 256;\nvalue = value >> 8;\nfinal c = value % 256;\nfinal composite = (a << 16) | (b << 8) | c;\nreturn ((composite * seed + {{salt}}) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_modulo_shift",
+        "body": "final a = (input + {{salt}}) & 0xFF;\nfinal b = (seed + {{salt}}) & 0xFF;\nfinal c = ((a << {{shift}}) ^ b) & 0xFF;\nfinal d = ((b >> ({{shift}} % 4)) ^ a) & 0xFF;\nfinal result = (c << 8) | d;\nreturn ((result * {{salt}} + seed) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_bit_rotate",
+        "body": "final n = (input + {{salt}}) & 0xFFFF;\nfinal bits = ({{shift}} % 8) + 1;\nfinal leftPart = (n << bits) & 0xFFFF;\nfinal rightPart = (n >> (16 - bits)) & 0xFFFF;\nfinal rotated = leftPart | rightPart;\nreturn ((rotated * seed + {{salt}}) >> 2) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_list_fold",
+        "body": "final n = 4 + ({{salt}} % 5);\nfinal values = List<int>.generate(n, (i) {\n  return ((input + i) * seed + {{salt}}) & 0xFF;\n});\nfinal result = values.fold<int>(seed & 0xFF, (prev, elem) {\n  return ((prev << {{shift}}) ^ elem + {{salt}}) & 0x3fffffff;\n});\nreturn result;"
+      },
+      {
+        "id": "custom_sync_count_if",
+        "body": "final limit = 3 + ({{salt}} % 6);\nvar count = 0;\nfor (int i = 0; i < limit; i++) {\n  final condition = ((input + i) * seed + {{salt}}) % 3;\n  if (condition == 0) {\n    count++;\n  }\n}\nreturn ((count * {{salt}} + seed) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_fnv_like",
+        "body": "final base = ({{salt}} * 16777619 + 2166136261) & 0xFFFFFFFF;\nvar hash = base ^ (seed & 0xFF);\nfinal src = input.abs().toString();\nfor (int i = 0; i < src.length; i++) {\n  hash = (hash ^ src.codeUnitAt(i)) & 0xFFFFFFFF;\n  hash = ((hash * 16777619 + {{salt}}) << {{shift}}) & 0x3fffffff;\n}\nreturn hash;"
+      },
+      {
+        "id": "custom_sync_int_pow",
+        "body": "final base = 2 + (input % 4);\nfinal exp = 1 + (({{salt}} + seed) % 4);\nvar result = 1;\nfor (int i = 0; i < exp; i++) {\n  result = (result * base) & 0xFFFF;\n}\nreturn ((result * {{salt}} + seed) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_digit_sum",
+        "body": "var n = input.abs() + {{salt}};\nvar sum = 0;\nwhile (n > 0) {\n  sum += n % 10;\n  n = n ~/ 10;\n}\nreturn ((sum * seed + {{salt}}) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_lcg_step",
+        "body": "final a = 1103515245 + ({{salt}} % 1000);\nfinal c = 12345 + ({{salt}} % 100);\nfinal m = 0x7FFFFFFF;\nfinal next = ((a * input + c) % m + seed) & m;\nreturn ((next * {{salt}} + seed) << {{shift}}) & 0x3fffffff;"
+      },
+      {
+        "id": "custom_sync_string_code_units",
+        "body": "final s = input.abs().toString() + 'x{{salt}}';\nvar result = seed & 0xFF;\nfor (int i = 0; i < s.length; i++) {\n  final cu = s.codeUnitAt(i);\n  result = ((result * 37 + cu + {{salt}}) << {{shift}}) & 0x3fffffff;\n}\nreturn result;"
+      },
+      {
+        "id": "custom_sync_coord_math",
+        "body": "final x = (input + {{salt}}) & 0xFFFF;\nfinal y = (seed + {{salt}}) & 0xFFFF;\nfinal distSq = (x * x + y * y) & 0x3FFFFFFF;\nfinal manhattan = ((x & 0xFF) + (y & 0xFF)) & 0xFFFF;\nfinal mix = ((distSq << {{shift}}) ^ manhattan + {{salt}}) & 0x3fffffff;\nreturn mix;"
       }
     ]
   }
