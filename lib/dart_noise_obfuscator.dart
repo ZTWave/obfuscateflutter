@@ -346,8 +346,8 @@ class ClassInnerNoiseConfig {
     if (value == null) {
       return ClassInnerNoiseConfig(
         enabled: true,
-        targetRatio: 1,
-        maxTargetLines: 8000,
+        targetRatio: 1.5,
+        maxTargetLines: 100000,
         maxMembersPerClass: 16,
         maxHooksPerFile: 30,
         executionPolicy: 'referenceOnly',
@@ -377,7 +377,7 @@ class ClassInnerNoiseConfig {
       enabled: enabled,
       targetRatio: ratioValue.toDouble(),
       maxTargetLines:
-          _readOptionalBoundedInt(value, 'maxTargetLines', 20, 50000, 8000),
+          _readOptionalBoundedInt(value, 'maxTargetLines', 20, 500000, 8000),
       maxMembersPerClass:
           _readOptionalBoundedInt(value, 'maxMembersPerClass', 1, 80, 16),
       maxHooksPerFile:
@@ -749,8 +749,6 @@ _ClassInnerResult _injectClassInnerNoise({
 
 class _SourceInsertion {
   _SourceInsertion(this.offset, this.text) : endOffset = offset;
-
-  _SourceInsertion.replace(this.offset, this.endOffset, this.text);
 
   final int offset;
   final int endOffset;
@@ -1983,19 +1981,13 @@ _ImportInsertions _classInnerImportInsertions(
     }
   }
   if (missing.isEmpty) return _ImportInsertions([], {});
-  if (importDirectives.isEmpty) {
-    final lines = _sortImportSpecs(missing).map(_importLineFromSpec).join('\n');
-    return _ImportInsertions([_SourceInsertion(0, '$lines\n\n')], missing);
-  }
 
-  final firstOffset = importDirectives.first.offset;
-  final lastEnd = importDirectives.last.end;
-  final importSpecs = <String>{...existing, ...missing};
-  final lines =
-      _sortImportSpecs(importSpecs).map(_importLineFromSpec).join('\n');
-  final replacement = '$lines\n';
+  final insertOffset = _importInsertOffset(unit);
+  final lines = _sortImportSpecs(missing).map(_importLineFromSpec).join('\n');
+  final prefix = insertOffset == 0 ? '' : '\n';
+  final suffix = source.startsWith('\n', insertOffset) ? '' : '\n';
   return _ImportInsertions(
-    [_SourceInsertion.replace(firstOffset, lastEnd, replacement)],
+    [_SourceInsertion(insertOffset, '$prefix$lines$suffix')],
     missing,
   );
 }
@@ -2016,7 +2008,9 @@ String _applyInsertions(String source, List<_SourceInsertion> insertions) {
 
 String? _normalizeImportLine(String line) {
   final match =
-      RegExp(r"import\s+'([^']+)'\s*(?:as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*;")
+      RegExp(
+        r'''import\s+['"]([^'"]+)['"]\s*(?:as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*;''',
+      )
           .firstMatch(line.trim());
   if (match == null) return null;
   final uri = match.group(1)!;
