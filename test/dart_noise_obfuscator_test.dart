@@ -861,7 +861,39 @@ void main() {
     expect(entrySource, contains('obfDartNoiseRetain'));
     expect(entrySource, contains('dartNoisePageBridge'));
     expect(entrySource, contains('dartNoiseWorkerBridge'));
-    expect(entrySource, contains('checksum ^='));
+    expect(entrySource, contains('final retainedSymbols = <Object?>['));
+    expect(entrySource, contains('dartNoisePageBridge,'));
+    expect(entrySource, contains('dartNoiseWorkerBridge,'));
+    expect(entrySource, isNot(contains('dartNoisePageBridge(checksum)')));
+    expect(entrySource, isNot(contains('dartNoiseWorkerBridge(checksum)')));
+    expect(entrySource, isNot(contains('checksum ^=')));
+    for (final import in RegExp(r"import '([^']+)';")
+        .allMatches(entrySource)
+        .map((match) => match.group(1)!)) {
+      final importedPath = p.posix.normalize(
+        p.posix.join(p.posix.dirname(entryPath.substring(4)), import),
+      );
+      final importedSource = File(p.joinAll([
+        projectDir.path,
+        'lib',
+        ...importedPath.split('/'),
+      ])).readAsStringSync();
+      expect(importedSource, isNot(contains('extends StatelessWidget')));
+      expect(importedSource, isNot(contains('class NoiseWorker')));
+    }
+
+    for (final generatedFile in generatedFiles) {
+      final source = File(p.joinAll([
+        projectDir.path,
+        ...generatedFile.split('/'),
+      ])).readAsStringSync();
+      for (final declaration
+          in RegExp(r'int\s+([A-Za-z_][A-Za-z0-9_]*)\(').allMatches(source)) {
+        final name = declaration.group(1)!;
+        if (name.startsWith('dartNoise')) continue;
+        expect(name, matches(RegExp(r'^[a-z][A-Za-z0-9]*$')));
+      }
+    }
   });
 
   test('dart noise generation avoids single-file random directories', () {
@@ -911,5 +943,27 @@ void main() {
     for (final files in filesByDir.values) {
       expect(files.length, greaterThanOrEqualTo(2));
     }
+
+    final shardStructures = <String>{};
+    for (final generatedFile in generatedFiles) {
+      final source = File(p.joinAll([
+        projectDir.path,
+        ...generatedFile.split('/'),
+      ])).readAsStringSync();
+      if (!source.contains('Step0')) continue;
+      if (source.contains('final folded =')) {
+        shardStructures.add('folded');
+      }
+      if (source.contains('for (var i = 0;')) {
+        shardStructures.add('loop');
+      }
+      if (source.contains('switch (')) {
+        shardStructures.add('switch');
+      }
+      if (source.contains('final values = <int>[')) {
+        shardStructures.add('list');
+      }
+    }
+    expect(shardStructures.length, greaterThanOrEqualTo(2));
   });
 }
