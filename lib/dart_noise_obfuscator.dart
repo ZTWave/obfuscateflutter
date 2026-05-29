@@ -1495,11 +1495,12 @@ void _writeMultiShard(
 ) {
   final count = 4 + random.nextInt(4); // 4-7 internal functions
   final baseName = _shardFuncName(filePath);
-  final variant = variantSeed % 4;
+  final startVariant = variantSeed % 4;
   buf.writeln();
   for (var i = 0; i < count; i++) {
     final salt = random.nextInt(1 << 20) + 1;
     final shift = random.nextInt(8) + 1;
+    final variant = (startVariant + i) % 4;
     _writeShardStep(buf, '${baseName}Step$i', variant, salt, shift);
   }
   // Public entry-point chains all internal functions (prevents tree shaking)

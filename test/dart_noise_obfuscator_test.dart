@@ -966,4 +966,70 @@ void main() {
     }
     expect(shardStructures.length, greaterThanOrEqualTo(2));
   });
+
+  test('dart noise generation varies shard templates inside each file', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_noise_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    Directory(p.join(projectDir.path, 'lib')).createSync(recursive: true);
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'garbageFileCountMin': 10,
+      'garbageFileCountMax': 10,
+      'snippets': ['widget_empty_page', 'sync_math'],
+    }));
+    File(p.join(projectDir.path, 'lib', 'main.dart')).writeAsStringSync('''
+void main() {
+}
+''');
+
+    runDartNoiseObfuscation(projectDir.path);
+
+    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
+        (file) => p.basename(file.path).startsWith('dart_noise_mapping_'));
+    final mapping =
+        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final generatedFiles =
+        (mapping['generated_files'] as List<dynamic>).cast<String>();
+    var shardFileCount = 0;
+
+    for (final generatedFile in generatedFiles) {
+      final source = File(p.joinAll([
+        projectDir.path,
+        ...generatedFile.split('/'),
+      ])).readAsStringSync();
+      if (!source.contains('Step0')) continue;
+      shardFileCount++;
+
+      final structures = <String>{};
+      if (source.contains('final folded =')) {
+        structures.add('folded');
+      }
+      if (source.contains('for (var i = 0;')) {
+        structures.add('loop');
+      }
+      if (source.contains('switch (')) {
+        structures.add('switch');
+      }
+      if (source.contains('final values = <int>[')) {
+        structures.add('list');
+      }
+      expect(
+        structures.length,
+        greaterThanOrEqualTo(2),
+        reason: '$generatedFile should not reuse one shard template only.',
+      );
+    }
+
+    expect(shardFileCount, greaterThan(0));
+  });
 }
