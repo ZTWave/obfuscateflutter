@@ -18,8 +18,7 @@ import 'package:yaml/yaml.dart';
 
 void main(List<String> arguments) async {
   print('Hello, Creeper!');
-  print(
-      'brfore you start this project change all relative import to start with package import!');
+  print('brfore you start this project change all relative import to start with package import!');
   print('\n');
   final process = await Process.start(
     'flutter',
@@ -77,10 +76,10 @@ void _readTaskAndDo(
   2.混淆图片名称并清理
   3.生成Android Proguard混淆字典
   4.混淆项目中所有的String
-  5.打包Android Apk
-  6.打包Android AAB
-  7.打包IOS IPA测试包
-  8.恢复项目中已混淆的String
+  5.恢复项目中已混淆的String
+  6.打包Android Apk
+  7.打包Android AAB
+  8.打包IOS IPA测试包
   9.统一混淆（AST方案：文件/目录重命名+混淆文档）
   10.Dart随机代码注入/保留
   11.类内垃圾代码注入
@@ -112,22 +111,22 @@ void _readTaskAndDo(
       }
     case "5":
       {
-        _runBuildApk(projectPath, dartDefineArg);
+        _decryptString(projectPath);
         break;
       }
     case "6":
       {
-        _runBuildAab(projectPath, dartDefineArg);
+        _runBuildApk(projectPath, dartDefineArg);
         break;
       }
     case "7":
       {
-        _runBuildIpa(projectPath, true, dartDefineArg);
+        _runBuildAab(projectPath, dartDefineArg);
         break;
       }
     case "8":
       {
-        _decryptString(projectPath);
+        _runBuildIpa(projectPath, true, dartDefineArg);
         break;
       }
     case "9":
@@ -147,16 +146,14 @@ void _readTaskAndDo(
       }
     case "x":
       {
-        changeToTempDirAndRun(projectPath, pubSpaceName,
-            (projectPathNew) async {
+        changeToTempDirAndRun(projectPath, pubSpaceName, (projectPathNew) async {
           _runChangeImageMd5(projectPathNew);
           _proguadImageNameAndClean(projectPathNew);
           _runGenAndroidProguardDict(projectPathNew);
           _runUnifiedObfuscation(projectPathNew);
           print('!!!混淆任务已经完成!!!');
           List<bool> tasks = await _askWhichToBuild();
-          await _runBuild(projectPath, projectPathNew, tasks[0], tasks[1],
-              tasks[2], tasks[3], dartDefineArg);
+          await _runBuild(projectPath, projectPathNew, tasks[0], tasks[1], tasks[2], tasks[3], dartDefineArg);
           deleteTempProject(projectPathNew);
         });
         break;
@@ -218,32 +215,20 @@ _runClassInnerNoiseObfuscation(String projectPath) {
 }
 
 Future<List<bool>> _askWhichToBuild() async {
-  print(
-      '\n输入想要打包类型( 1->apk 2->aab 3->ipaDev 4->ipaDis )\nwindows只支持APK!,支持打多个包,(例如:12,将打包apk和aab)');
+  print('\n输入想要打包类型( 1->apk 2->aab 3->ipaDev 4->ipaDis )\nwindows只支持APK!,支持打多个包,(例如:12,将打包apk和aab)');
   String tasks = stdin.readLineSync() ?? '';
   if (Platform.isMacOS) {
     print(
         "will build apk -> ${tasks.contains('1')} will build aab -> ${tasks.contains('2')} ipadev -> ${tasks.contains('3')} iparelease -> ${tasks.contains('4')}");
-    return [
-      tasks.contains('1'),
-      tasks.contains('2'),
-      tasks.contains('3'),
-      tasks.contains('4')
-    ];
+    return [tasks.contains('1'), tasks.contains('2'), tasks.contains('3'), tasks.contains('4')];
   }
   print("will build apk -> ${tasks.contains('1')}");
   sleep(Duration(seconds: 3));
   return [tasks.contains('1'), tasks.contains('2'), false, false];
 }
 
-_runBuild(
-    String projectPath,
-    String projectPathTemp,
-    bool buildApk,
-    bool buildAab,
-    bool buildIpaDev,
-    bool buildIpaRelease,
-    String dartDefineArg) async {
+_runBuild(String projectPath, String projectPathTemp, bool buildApk, bool buildAab, bool buildIpaDev,
+    bool buildIpaRelease, String dartDefineArg) async {
   if (buildApk) {
     String apkPath = await _runBuildApk(projectPathTemp, dartDefineArg);
     await transOutputTo(projectPath, projectPathTemp, apkPath);
@@ -274,8 +259,7 @@ Future<String> _runBuildAab(String projectPath, String dartDefineArg) async {
   return buildReleaseAab(projectPath, dartDefineArg);
 }
 
-Future<String> _runBuildIpa(
-    String projectPath, bool isDev, String dartDefineArg) async {
+Future<String> _runBuildIpa(String projectPath, bool isDev, String dartDefineArg) async {
   print("build ipa ${isDev ? "dev" : "release"} start...");
   sleep(Duration(seconds: 3));
   return buildIPA(projectPath, isDev, dartDefineArg);
