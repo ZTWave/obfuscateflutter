@@ -8,21 +8,15 @@ import 'package:path/path.dart' as p;
 void proguardImages(String projectPath) {
   List<ImageProguardData> imageMapper = List.empty(growable: true);
 
-  List<Directory> assertsDir = YamlHelper.getAssetsDir(projectPath)
-      .map((String e) => Directory(p.join(projectPath, e)))
-      .toList();
-
-  List<FileSystemEntity> fileEles = [];
-
-  for (final dir in assertsDir) {
-    fileEles.addAll(dir.listSync(recursive: true));
-  }
+  final assetEntries = YamlHelper.getAssetsDir(projectPath);
+  final fileEles = _collectAssetEntities(projectPath, assetEntries);
 
   List<File> images = List.empty(growable: true);
+  final seenImagePaths = <String>{};
   for (var element in fileEles) {
     if (element is File) {
       if (imagesExtNames.contains(getFileExtName(element))) {
-        if (images.where((e) => e.path == element.path).isEmpty) {
+        if (seenImagePaths.add(element.path)) {
           images.add(element);
         }
       }
@@ -36,6 +30,12 @@ void proguardImages(String projectPath) {
         proguardKeys[j] + getFileExtName(element), getFileDirPath(element)));
   }
 
+  final replacements = _buildImageReplacements(
+    imageMapper,
+    projectPath,
+    assetEntries,
+  );
+
   Directory libDir = Directory(p.join(projectPath, "lib"));
   final List<FileSystemEntity> entities =
       libDir.listSync(recursive: true).toList();
@@ -44,48 +44,33 @@ void proguardImages(String projectPath) {
       .where((value) => value is File && getFileExtName(value) == ".dart")
       .toList();
 
-  allFiles.forEach((element) {
+  for (final element in allFiles) {
     if (element is! File) {
-      return;
+      continue;
     }
 
-    String codeStr = element.readAsStringSync();
-    for (int i = 0; i < imageMapper.length; i++) {
-      var imageItem = imageMapper[i];
-      if (codeStr.contains("\"${imageItem.originalName}\"")) {
-        imageItem.used = true;
-        codeStr = codeStr.replaceAll(
-            "\"${imageItem.originalName}\"", "\"${imageItem.proguardName}\"");
+    final codeStr = element.readAsStringSync();
+    final modifiedCodeStr =
+        codeStr.replaceAllMapped(_simpleStringLiteralPattern, (match) {
+      final quote = match.group(1)!;
+      final value = match.group(2)!;
+      final replacement = replacements[value];
+      if (replacement == null) {
+        return match.group(0)!;
       }
-      if (codeStr.contains("'${imageItem.originalName}'")) {
-        imageItem.used = true;
-        codeStr = codeStr.replaceAll(
-            "'${imageItem.originalName}'", "'${imageItem.proguardName}'");
-      }
-
-      final posableUsage = _getPathFromAsserts(
-          imageItem.path, assertsDir.map((e) => e.path).toList());
-
-      for (String usage in posableUsage) {
-        final doubleUsage = "\"$usage/${imageItem.originalName}\"";
-        if (codeStr.contains(doubleUsage)) {
-          imageItem.used = true;
-          final old = "\"$usage/${imageItem.originalName}\"";
-          final nww = "\"$usage/${imageItem.proguardName}\"";
-          codeStr = codeStr.replaceAll(old, nww);
-        }
-
-        final singleUsage = "'$usage/${imageItem.originalName}'";
-        if (codeStr.contains(singleUsage)) {
-          imageItem.used = true;
-          final old = "'$usage/${imageItem.originalName}'";
-          final nww = "'$usage/${imageItem.proguardName}'";
-          codeStr = codeStr.replaceAll(old, nww);
-        }
-      }
+      replacement.image.used = true;
+      return '$quote${replacement.value}$quote';
+    });
+    if (modifiedCodeStr != codeStr) {
+      element.writeAsStringSync(
+        modifiedCodeStr,
+        flush: true,
+        mode: FileMode.write,
+      );
     }
-    element.writeAsStringSync(codeStr, flush: true, mode: FileMode.write);
-  });
+  }
+
+  _updatePubspecAssets(projectPath, imageMapper);
 
   for (int i = 0; i < imageMapper.length; i++) {
     var element = imageMapper[i];
@@ -101,6 +86,69 @@ void proguardImages(String projectPath) {
   _printMapping(imageMapper);
 }
 
+final RegExp _simpleStringLiteralPattern = RegExp(r'''(['"])([^'"\r\n]*)\1''');
+
+Map<String, _ImageReplacement> _buildImageReplacements(
+  List<ImageProguardData> imageMapper,
+  String projectPath,
+  List<String> assetEntries,
+) {
+  final replacements = <String, _ImageReplacement>{};
+
+  for (final imageItem in imageMapper) {
+    replacements.putIfAbsent(
+      imageItem.originalName,
+      () => _ImageReplacement(imageItem.proguardName, imageItem),
+    );
+
+    final posableUsage = _getPathFromAsserts(
+      imageItem.path,
+      projectPath,
+      assetEntries,
+    );
+
+    for (final usage in posableUsage) {
+      replacements['$usage/${imageItem.originalName}'] =
+          _ImageReplacement('$usage/${imageItem.proguardName}', imageItem);
+    }
+  }
+
+  return replacements;
+}
+
+List<FileSystemEntity> _collectAssetEntities(
+  String projectPath,
+  List<String> assetEntries,
+) {
+  final entities = <FileSystemEntity>[];
+  final seenPaths = <String>{};
+
+  for (final String assetEntry in assetEntries) {
+    final String entityPath = p.normalize(p.join(projectPath, assetEntry));
+    final FileSystemEntityType type = FileSystemEntity.typeSync(entityPath);
+
+    if (type == FileSystemEntityType.file) {
+      if (seenPaths.add(entityPath)) {
+        entities.add(File(entityPath));
+      }
+      continue;
+    }
+
+    if (type == FileSystemEntityType.directory) {
+      for (final entity in Directory(entityPath).listSync(recursive: true)) {
+        if (seenPaths.add(entity.path)) {
+          entities.add(entity);
+        }
+      }
+      continue;
+    }
+
+    print('asset path not found, skip: $assetEntry');
+  }
+
+  return entities;
+}
+
 void _printMapping(List<ImageProguardData> imageMapper) {
   for (var element in imageMapper) {
     if (element.used) {
@@ -111,28 +159,89 @@ void _printMapping(List<ImageProguardData> imageMapper) {
   }
 }
 
-//all path is abslutate path
+// imgParentPath is absolute. Returned paths use Flutter asset URI separators.
 List<String> _getPathFromAsserts(
-    String imgParentPath, List<String> assertsPaths) {
+  String imgParentPath,
+  String projectPath,
+  List<String> assetEntries,
+) {
   final posableImageUsages = <String>[];
-  for (String assertsPath in assertsPaths) {
-    final assertsFolderName = assertsPath
-        .split(p.separator)
-        .lastWhere((element) => element.isNotEmpty);
+  final projectRelativeParent = _toAssetUri(
+    p.relative(imgParentPath, from: projectPath),
+  );
+  if (projectRelativeParent != '.' && projectRelativeParent.isNotEmpty) {
+    posableImageUsages.add(projectRelativeParent);
+  }
 
-    final imageParentPathArray = imgParentPath.split(p.separator);
-
-    var index = imageParentPathArray.indexOf(assertsFolderName);
-
-    if (index >= 0) {
-      final List<String> pathList =
-          imageParentPathArray.sublist(index - 1).toList(growable: true);
-      //pathList.insert(0, assertsFolderName);
-      posableImageUsages.add(pathList.join("/"));
+  for (final assetEntry in assetEntries) {
+    final entryPath = p.normalize(p.join(projectPath, assetEntry));
+    final entryType = FileSystemEntity.typeSync(entryPath);
+    if (entryType == FileSystemEntityType.file &&
+        p.equals(p.dirname(entryPath), imgParentPath)) {
+      posableImageUsages.add(_toAssetUri(p.dirname(assetEntry)));
+    } else if (entryType == FileSystemEntityType.directory &&
+        p.isWithin(entryPath, imgParentPath)) {
+      posableImageUsages.add(projectRelativeParent);
     }
   }
 
-  return posableImageUsages;
+  return posableImageUsages
+      .where((usage) => usage.isNotEmpty && usage != '.')
+      .toSet()
+      .toList();
+}
+
+String _toAssetUri(String value) {
+  return p
+      .normalize(value)
+      .split(p.separator)
+      .where((segment) => segment.isNotEmpty && segment != '.')
+      .join('/');
+}
+
+void _updatePubspecAssets(
+  String projectPath,
+  List<ImageProguardData> imageMapper,
+) {
+  final pubspecFile = File(p.join(projectPath, 'pubspec.yaml'));
+  if (!pubspecFile.existsSync()) return;
+
+  var content = pubspecFile.readAsStringSync();
+  for (final imageItem in imageMapper) {
+    final oldAssetUri =
+        _imageAssetUri(projectPath, imageItem.path, imageItem.originalName);
+    final newAssetUri =
+        _imageAssetUri(projectPath, imageItem.path, imageItem.proguardName);
+
+    if (imageItem.used) {
+      content = content.replaceAll(oldAssetUri, newAssetUri);
+    } else {
+      content = _removeAssetEntryLine(content, oldAssetUri);
+    }
+  }
+
+  pubspecFile.writeAsStringSync(content, flush: true, mode: FileMode.write);
+}
+
+String _imageAssetUri(
+    String projectPath, String imageDirPath, String fileName) {
+  return _toAssetUri(
+    p.relative(
+      p.join(imageDirPath, fileName),
+      from: projectPath,
+    ),
+  );
+}
+
+String _removeAssetEntryLine(String content, String assetUri) {
+  final escaped = RegExp.escape(assetUri);
+  final patternSource =
+      '^[ \\t]*-[ \\t]*(?:$escaped|"$escaped"|\'$escaped\')[ \\t]*(?:#.*)?(?:\\r?\\n|\$)';
+  final pattern = RegExp(
+    patternSource,
+    multiLine: true,
+  );
+  return content.replaceAll(pattern, '');
 }
 
 class ImageProguardData {
@@ -147,4 +256,11 @@ class ImageProguardData {
   String toString() {
     return "ImageProguardData originalName->$originalName proguardName->$proguardName path->$path used->$used";
   }
+}
+
+class _ImageReplacement {
+  final String value;
+  final ImageProguardData image;
+
+  _ImageReplacement(this.value, this.image);
 }
