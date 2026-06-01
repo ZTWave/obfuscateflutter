@@ -1,7 +1,7 @@
 {
-  "pageCount": 10,
-  "classCount": 20,
-  "methodCountPerClass": 6,
+  "pageCount": 100,
+  "classCount": 200,
+  "methodCountPerClass": 10,
   "template": "page_sync_class",
   "outputDir": "lib/dart_noise",
   "garbageFileCountMin": 100,

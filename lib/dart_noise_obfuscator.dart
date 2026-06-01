@@ -230,16 +230,16 @@ class DartNoiseConfig {
       throw StateError('$_configFileName must contain a JSON object.');
     }
 
-    final pageCount = _readBoundedInt(decoded, 'pageCount', 1, 50);
-    final classCount = _readBoundedInt(decoded, 'classCount', 1, 100);
-    final methodCount = _readBoundedInt(decoded, 'methodCountPerClass', 1, 200);
+    final pageCount = _readBoundedInt(decoded, 'pageCount', 1, 500);
+    final classCount = _readBoundedInt(decoded, 'classCount', 1, 500);
+    final methodCount = _readBoundedInt(decoded, 'methodCountPerClass', 1, 500);
     final garbageFileCountMin =
         _readOptionalBoundedInt(decoded, 'garbageFileCountMin', 3, 100, 3);
     final garbageFileCountMax = _readOptionalBoundedInt(
       decoded,
       'garbageFileCountMax',
       garbageFileCountMin,
-      500,
+      1000,
       garbageFileCountMin,
     );
     final template = decoded['template'];
