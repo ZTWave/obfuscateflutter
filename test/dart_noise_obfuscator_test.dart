@@ -430,6 +430,142 @@ class Controller {
     expect(parseString(content: source).errors, isEmpty);
   });
 
+  test('class inner noise injects readable string members and locals', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_inner_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    Directory(p.join(projectDir.path, 'lib')).createSync();
+    File(p.join(projectDir.path, 'pubspec.yaml')).writeAsStringSync('''
+name: sample_app
+environment:
+  sdk: ^3.2.3
+''');
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'classInnerNoise': {
+        'enabled': true,
+        'targetRatio': 1.0,
+        'maxTargetLines': 220,
+        'maxMembersPerClass': 4,
+        'maxHooksPerFile': 3,
+        'stringNoise': {
+          'enabled': true,
+          'memberStringCountPerClass': [2, 2],
+          'localStringCountPerHook': [2, 2],
+          'minLength': 8,
+          'maxLength': 80,
+          'templates': [
+            {
+              'id': 'readable_trace',
+              'value': 'trace.{{className}}.{{methodName}}.{{index}}'
+            },
+            {'id': 'readable_cache', 'value': 'cache {{noun}} ready {{seed}}'}
+          ],
+          'templateWeights': {
+            'readable_trace': 2,
+            'readable_cache': 1,
+          },
+        },
+        'templateGroups': {
+          'executedLightweight': ['sync_hash'],
+          'retainedOnly': [],
+        },
+      },
+    }));
+    File(p.join(projectDir.path, 'lib', 'repo.dart')).writeAsStringSync('''
+class Repo {
+  String load(String key) {
+    final normalized = key.trim();
+    return normalized.toUpperCase();
+  }
+}
+''');
+
+    runClassInnerNoiseObfuscation(projectDir.path);
+
+    final source =
+        File(p.join(projectDir.path, 'lib', 'repo.dart')).readAsStringSync();
+    expect(source, contains('static const String'));
+    expect(source, contains('static const List<String>'));
+    expect(source, contains('static const Map<String, String>'));
+    expect(source, contains('trace.Repo.'));
+    expect(source, contains('final obfText'));
+    expect(source, contains('.codeUnits.fold<int>'));
+    expect(source, contains('TextMap.length'));
+    expect(source, contains('return normalized.toUpperCase();'));
+    expect(parseString(content: source).errors, isEmpty);
+
+    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
+          (file) =>
+              p.basename(file.path).startsWith('class_inner_noise_mapping_'),
+        );
+    final mapping =
+        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    expect(mapping['string_templates_used'], contains('readable_trace'));
+    final stringsInjected =
+        (mapping['strings_injected'] as List<dynamic>).cast<dynamic>();
+    expect(stringsInjected, hasLength(greaterThanOrEqualTo(4)));
+    expect(
+      stringsInjected.any((entry) =>
+          entry is Map &&
+          entry['kind'] == 'member' &&
+          entry['class'] == 'Repo' &&
+          (entry['value'] as String).isNotEmpty),
+      isTrue,
+    );
+    expect(
+      stringsInjected.any((entry) =>
+          entry is Map &&
+          entry['kind'] == 'local' &&
+          entry['method'] == 'load'),
+      isTrue,
+    );
+  });
+
+  test('class inner string noise rejects code-like templates', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_inner_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'classInnerNoise': {
+        'enabled': true,
+        'stringNoise': {
+          'enabled': true,
+          'templates': [
+            {
+              'id': 'bad_code',
+              'value': 'import dart:io',
+            }
+          ],
+        },
+      },
+    }));
+
+    expect(
+      () => DartNoiseConfig.load(projectDir.path),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test('dart noise generation injects sync retain hook and mapping', () {
     final projectDir = Directory.systemTemp.createTempSync('obf_noise_test_');
     addTearDown(() {

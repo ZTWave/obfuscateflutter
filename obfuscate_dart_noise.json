@@ -123,6 +123,92 @@
     "maxTargetLines": 100000,
     "maxMembersPerClass": 16,
     "maxHooksPerFile": 30,
+    "stringNoise": {
+      "enabled": true,
+      "memberStringCountPerClass": [
+        2,
+        10
+      ],
+      "localStringCountPerHook": [
+        0,
+        5
+      ],
+      "minLength": 6,
+      "maxLength": 96,
+      "templates": [
+        {
+          "id": "session_word_seed",
+          "value": "session_{{word}}_{{seed}}"
+        },
+        {
+          "id": "trace_context",
+          "value": "trace.{{className}}.{{methodName}}.{{index}}"
+        },
+        {
+          "id": "cache_ready",
+          "value": "cache {{noun}} ready {{seed}}"
+        },
+        {
+          "id": "route_word",
+          "value": "route/{{word}}/{{index}}"
+        },
+        {
+          "id": "metric_event",
+          "value": "metric_{{verb}}_{{noun}}_{{seed}}"
+        },
+        {
+          "id": "auth_login",
+          "value": "auth.login.{{index}}.{{word}}"
+        },
+        {
+          "id": "feature_toggle",
+          "value": "feature.{{word}}.{{seed}}"
+        },
+        {
+          "id": "user_profile",
+          "value": "user/{{word}}/profile/{{index}}"
+        },
+        {
+          "id": "cache_item",
+          "value": "cache.item.{{noun}}.{{seed}}"
+        },
+        {
+          "id": "session_token",
+          "value": "session.token.{{index}}.{{word}}"
+        },
+        {
+          "id": "request_path",
+          "value": "request/{{verb}}/{{noun}}/{{seed}}"
+        },
+        {
+          "id": "error_trace",
+          "value": "error.{{className}}.{{methodName}}.{{index}}"
+        },
+        {
+          "id": "config_value",
+          "value": "config.{{noun}}.{{seed}}.{{index}}"
+        },
+        {
+          "id": "analytics_event",
+          "value": "analytics.{{verb}}.{{noun}}.{{seed}}"
+        },
+        {
+          "id": "user_action",
+          "value": "action.{{word}}.{{verb}}.{{index}}"
+        },
+        {
+          "id": "resource_key",
+          "value": "resource/{{word}}/key/{{seed}}"
+        }
+      ],
+      "templateWeights": {
+        "session_word_seed": 2,
+        "trace_context": 3,
+        "cache_ready": 2,
+        "route_word": 1,
+        "metric_event": 2
+      }
+    },
     "skipFiles": [
       "**/*.g.dart",
       "**/*.freezed.dart",

@@ -27,6 +27,52 @@ const _knownSnippets = {
   'sync_enum_switch',
 };
 const _defaultLightweightTemplates = ['sync_hash', 'sync_switch'];
+const _defaultStringNoiseTemplates = [
+  {'id': 'session_word_seed', 'value': 'session_{{word}}_{{seed}}'},
+  {
+    'id': 'trace_context',
+    'value': 'trace.{{className}}.{{methodName}}.{{index}}'
+  },
+  {'id': 'cache_ready', 'value': 'cache {{noun}} ready {{seed}}'},
+  {'id': 'route_word', 'value': 'route/{{word}}/{{index}}'},
+  {'id': 'metric_event', 'value': 'metric_{{verb}}_{{noun}}_{{seed}}'},
+];
+const _stringNoiseWords = [
+  'signal',
+  'anchor',
+  'canvas',
+  'packet',
+  'cursor',
+  'frame',
+  'token',
+  'scope',
+  'buffer',
+  'marker',
+];
+const _stringNoiseVerbs = [
+  'sync',
+  'merge',
+  'trace',
+  'cache',
+  'route',
+  'parse',
+  'watch',
+  'bind',
+  'index',
+  'stage',
+];
+const _stringNoiseNouns = [
+  'session',
+  'payload',
+  'channel',
+  'window',
+  'record',
+  'profile',
+  'segment',
+  'snapshot',
+  'entry',
+  'bucket',
+];
 const _defaultRetainedTemplates = [
   'async_future',
   'timer_stub',
@@ -115,6 +161,8 @@ void runClassInnerNoiseObfuscation(String projectPath) {
     'members': result.members,
     'hooks': result.hooks,
     'templates_used': result.templatesUsed.toList()..sort(),
+    'string_templates_used': result.stringTemplatesUsed.toList()..sort(),
+    'strings_injected': result.stringsInjected,
     'imports_added': result.importsAdded.toList()..sort(),
     'skipped': result.skipped,
   };
@@ -329,6 +377,7 @@ class ClassInnerNoiseConfig {
     required this.skipFiles,
     required this.lightweightTemplates,
     required this.retainedTemplates,
+    required this.stringNoise,
   });
 
   final bool enabled;
@@ -340,6 +389,7 @@ class ClassInnerNoiseConfig {
   final List<String> skipFiles;
   final List<String> lightweightTemplates;
   final List<String> retainedTemplates;
+  final ClassInnerStringNoiseConfig stringNoise;
 
   static ClassInnerNoiseConfig fromJson(Map<String, dynamic> json) {
     final value = json['classInnerNoise'];
@@ -354,6 +404,7 @@ class ClassInnerNoiseConfig {
         skipFiles: const ['**/*.g.dart', '**/*.freezed.dart', '**/*.gr.dart'],
         lightweightTemplates: List<String>.from(_defaultLightweightTemplates),
         retainedTemplates: List<String>.from(_defaultRetainedTemplates),
+        stringNoise: ClassInnerStringNoiseConfig.defaults(),
       );
     }
     if (value is! Map<String, dynamic>) {
@@ -398,6 +449,7 @@ class ClassInnerNoiseConfig {
         'retainedOnly',
         _defaultRetainedTemplates,
       ),
+      stringNoise: ClassInnerStringNoiseConfig.fromJson(value),
     );
   }
 
@@ -414,8 +466,120 @@ class ClassInnerNoiseConfig {
         'executedLightweight': lightweightTemplates,
         'retainedOnly': retainedTemplates,
       },
+      'stringNoise': stringNoise.toJson(),
     };
   }
+}
+
+class ClassInnerStringNoiseConfig {
+  ClassInnerStringNoiseConfig({
+    required this.enabled,
+    required this.memberStringCountPerClass,
+    required this.localStringCountPerHook,
+    required this.templates,
+    required this.templateWeights,
+    required this.minLength,
+    required this.maxLength,
+  });
+
+  final bool enabled;
+  final IntRange memberStringCountPerClass;
+  final IntRange localStringCountPerHook;
+  final List<NoiseTemplate> templates;
+  final Map<String, int> templateWeights;
+  final int minLength;
+  final int maxLength;
+
+  factory ClassInnerStringNoiseConfig.defaults() {
+    final templates = _defaultStringNoiseTemplates
+        .map((item) => NoiseTemplate(
+              id: item['id']!,
+              body: item['value']!,
+            ))
+        .toList();
+    return ClassInnerStringNoiseConfig(
+      enabled: true,
+      memberStringCountPerClass: const IntRange(2, 6),
+      localStringCountPerHook: const IntRange(0, 3),
+      templates: templates,
+      templateWeights: {
+        for (final template in templates) template.id: 1,
+      },
+      minLength: 6,
+      maxLength: 96,
+    );
+  }
+
+  static ClassInnerStringNoiseConfig fromJson(Map<String, dynamic> json) {
+    final value = json['stringNoise'];
+    final defaults = ClassInnerStringNoiseConfig.defaults();
+    if (value == null) return defaults;
+    if (value is! Map<String, dynamic>) {
+      throw StateError('classInnerNoise.stringNoise must be a JSON object.');
+    }
+    final enabled = value['enabled'] != false;
+    final templates = _readStringNoiseTemplates(value, defaults.templates);
+    final minLength =
+        _readOptionalBoundedInt(value, 'minLength', 1, 512, defaults.minLength);
+    final maxLengthDefault = max(defaults.maxLength, minLength);
+    final maxLength = _readOptionalBoundedInt(
+        value, 'maxLength', minLength, 1024, maxLengthDefault);
+    return ClassInnerStringNoiseConfig(
+      enabled: enabled,
+      memberStringCountPerClass: _readIntRange(
+        value,
+        'memberStringCountPerClass',
+        defaults.memberStringCountPerClass,
+        min: 0,
+        max: 50,
+      ),
+      localStringCountPerHook: _readIntRange(
+        value,
+        'localStringCountPerHook',
+        defaults.localStringCountPerHook,
+        min: 0,
+        max: 20,
+      ),
+      templates: templates,
+      templateWeights: _readStringTemplateWeights(
+        value,
+        templates,
+        defaults.templateWeights,
+      ),
+      minLength: minLength,
+      maxLength: maxLength,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'enabled': enabled,
+      'memberStringCountPerClass': [
+        memberStringCountPerClass.min,
+        memberStringCountPerClass.max,
+      ],
+      'localStringCountPerHook': [
+        localStringCountPerHook.min,
+        localStringCountPerHook.max,
+      ],
+      'templates': templates
+          .map((template) => {
+                'id': template.id,
+                'value': template.body,
+              })
+          .toList(),
+      'templateWeights': templateWeights,
+      'minLength': minLength,
+      'maxLength': maxLength,
+    };
+  }
+}
+
+class IntRange {
+  const IntRange(this.min, this.max);
+
+  final int min;
+  final int max;
 }
 
 class NoiseTemplate {
@@ -495,6 +659,8 @@ class _ClassInnerResult {
     required this.members,
     required this.hooks,
     required this.templatesUsed,
+    required this.stringTemplatesUsed,
+    required this.stringsInjected,
     required this.importsAdded,
     required this.skipped,
   });
@@ -507,6 +673,8 @@ class _ClassInnerResult {
   final List<String> members;
   final List<Map<String, dynamic>> hooks;
   final Set<String> templatesUsed;
+  final Set<String> stringTemplatesUsed;
+  final List<Map<String, dynamic>> stringsInjected;
   final Set<String> importsAdded;
   final List<Map<String, dynamic>> skipped;
 }
@@ -533,6 +701,24 @@ class _HookCandidate {
   final String name;
   final int insertOffset;
   final bool isStatic;
+}
+
+class _StringNoiseItem {
+  _StringNoiseItem({
+    required this.templateId,
+    required this.value,
+  });
+
+  final String templateId;
+  final String value;
+}
+
+class _StringMemberPlan {
+  _StringMemberPlan(this.strings);
+
+  final List<_StringNoiseItem> strings;
+
+  bool get isEmpty => strings.isEmpty;
 }
 
 class _ClassCandidateVisitor extends RecursiveAstVisitor<void> {
@@ -627,6 +813,8 @@ _ClassInnerResult _injectClassInnerNoise({
   final members = <String>[];
   final hooks = <Map<String, dynamic>>[];
   final templatesUsed = <String>{};
+  final stringTemplatesUsed = <String>{};
+  final stringsInjected = <Map<String, dynamic>>[];
   final importsAdded = <String>{};
   final random = Random();
 
@@ -668,22 +856,47 @@ _ClassInnerResult _injectClassInnerNoise({
       );
       if (selectedTemplates.isEmpty) continue;
       final prefix = '_obf${genRandomKey(8)}';
-      final memberSource =
-          _classInnerMembersSource(prefix, selectedTemplates, random);
-      final memberLines = _nonEmptyLineCount(memberSource);
       final className = candidate.declaration.name.lexeme;
+      final stringMemberPlan = _buildStringMemberPlan(
+        config.stringNoise,
+        random,
+        prefix: prefix,
+        className: className,
+      );
+      final memberSource = _classInnerMembersSource(
+        prefix,
+        selectedTemplates,
+        random,
+        stringMemberPlan,
+      );
+      final memberLines = _nonEmptyLineCount(memberSource);
       insertions.add(_SourceInsertion(
         candidate.memberInsertOffset,
         '\n$memberSource',
       ));
       classesTouched.add(className);
-      members
-          .addAll(_classInnerMemberNames(prefix, selectedTemplates, className));
+      members.addAll(_classInnerMemberNames(
+        prefix,
+        selectedTemplates,
+        className,
+        stringMemberPlan,
+      ));
       templatesUsed.addAll(selectedTemplates);
+      stringTemplatesUsed.addAll(
+        stringMemberPlan.strings.map((item) => item.templateId),
+      );
+      stringsInjected.addAll(stringMemberPlan.strings.map((item) => {
+            'file': relativeFile,
+            'class': className,
+            'kind': 'member',
+            'templateId': item.templateId,
+            'value': item.value,
+          }));
       for (final template in selectedTemplates) {
         neededImports.addAll(_classInnerTemplateImports[template] ?? const []);
       }
       var hooksForClass = 0;
+      var hookLinesForClass = 0;
       for (final hook in candidate.methods) {
         if (hooksInFile >= config.maxHooksPerFile) break;
         if (actualAddedLines + memberLines >= targetLines &&
@@ -695,7 +908,13 @@ _ClassInnerResult _injectClassInnerNoise({
           className: className,
           methodName: hook.name,
           isStatic: hook.isStatic,
+          stringNoise: config.stringNoise,
+          random: random,
+          file: relativeFile,
+          stringsInjected: stringsInjected,
+          stringTemplatesUsed: stringTemplatesUsed,
         );
+        hookLinesForClass += _nonEmptyLineCount(hookSource);
         insertions.add(_SourceInsertion(hook.insertOffset, hookSource));
         hooks.add({
           'file': relativeFile,
@@ -707,7 +926,7 @@ _ClassInnerResult _injectClassInnerNoise({
         hooksForClass++;
       }
       if (hooksForClass == 0) continue;
-      actualAddedLines += memberLines + (hooksForClass * 4);
+      actualAddedLines += memberLines + hookLinesForClass;
       touchedFile = true;
     }
     if (!touchedFile) continue;
@@ -742,6 +961,8 @@ _ClassInnerResult _injectClassInnerNoise({
     members: members,
     hooks: hooks,
     templatesUsed: templatesUsed,
+    stringTemplatesUsed: stringTemplatesUsed,
+    stringsInjected: stringsInjected,
     importsAdded: importsAdded,
     skipped: skipped,
   );
@@ -1143,6 +1364,90 @@ List<String> _readTemplateIds(
   return ids;
 }
 
+IntRange _readIntRange(
+  Map<String, dynamic> json,
+  String key,
+  IntRange defaults, {
+  required int min,
+  required int max,
+}) {
+  final value = json[key];
+  if (value == null) return defaults;
+  if (value is! List || value.length != 2) {
+    throw StateError('classInnerNoise.stringNoise.$key must be [min, max].');
+  }
+  final start = value[0];
+  final end = value[1];
+  if (start is! int || end is! int || start < min || end > max || start > end) {
+    throw StateError(
+        'classInnerNoise.stringNoise.$key must be integers from $min to $max.');
+  }
+  return IntRange(start, end);
+}
+
+List<NoiseTemplate> _readStringNoiseTemplates(
+  Map<String, dynamic> json,
+  List<NoiseTemplate> defaults,
+) {
+  final value = json['templates'];
+  if (value == null) return List<NoiseTemplate>.from(defaults);
+  if (value is! List || value.isEmpty) {
+    throw StateError('classInnerNoise.stringNoise.templates must be an array.');
+  }
+  final ids = <String>{};
+  return value.map((item) {
+    if (item is! Map<String, dynamic>) {
+      throw StateError(
+          'classInnerNoise.stringNoise.templates entries must be objects.');
+    }
+    final id = item['id'];
+    final body = item['value'] ?? item['body'];
+    if (id is! String || !_isIdentifier(id)) {
+      throw StateError(
+          'classInnerNoise.stringNoise.templates.id must be an identifier.');
+    }
+    if (!ids.add(id)) {
+      throw StateError('Duplicate stringNoise template id: $id.');
+    }
+    if (body is! String || body.trim().isEmpty) {
+      throw StateError(
+          'classInnerNoise.stringNoise.templates.value must be non-empty.');
+    }
+    _validateStringNoiseTemplate(id, body);
+    return NoiseTemplate(id: id, body: body);
+  }).toList();
+}
+
+Map<String, int> _readStringTemplateWeights(
+  Map<String, dynamic> json,
+  List<NoiseTemplate> templates,
+  Map<String, int> defaults,
+) {
+  final ids = templates.map((template) => template.id).toSet();
+  final weights = {
+    for (final template in templates) template.id: defaults[template.id] ?? 1,
+  };
+  final value = json['templateWeights'];
+  if (value == null) return weights;
+  if (value is! Map<String, dynamic>) {
+    throw StateError(
+        'classInnerNoise.stringNoise.templateWeights must be an object.');
+  }
+  for (final entry in value.entries) {
+    if (!ids.contains(entry.key)) {
+      throw StateError(
+          'Unsupported stringNoise template weight: ${entry.key}.');
+    }
+    final weight = entry.value;
+    if (weight is! int || weight < 1 || weight > 20) {
+      throw StateError(
+          'classInnerNoise.stringNoise.templateWeights.${entry.key} must be from 1 to 20.');
+    }
+    weights[entry.key] = weight;
+  }
+  return weights;
+}
+
 _CustomTemplates _readCustomTemplates(Map<String, dynamic> json) {
   final value = json['customTemplates'];
   if (value == null) {
@@ -1459,6 +1764,30 @@ void _validateTemplateBody(String id, String body) {
   }
 }
 
+void _validateStringNoiseTemplate(String id, String body) {
+  final forbiddenPatterns = [
+    RegExp(r'[\r\n;]'),
+    RegExp(r'\bFuture\b'),
+    RegExp(r'\bStream\b'),
+    RegExp(r'\basync\b'),
+    RegExp(r'\bawait\b'),
+    RegExp(r'\bTimer\b'),
+    RegExp(r'\bimport\b'),
+    RegExp(r'\bexport\b'),
+    RegExp(r'\bpart\b'),
+    RegExp(r'\bclass\b'),
+    RegExp(r'dart:io'),
+    RegExp(r'dart:async'),
+    RegExp(r'@pragma'),
+  ];
+  for (final pattern in forbiddenPatterns) {
+    if (pattern.hasMatch(body)) {
+      throw StateError('stringNoise template $id contains forbidden content: '
+          '${pattern.pattern}.');
+    }
+  }
+}
+
 bool _isIdentifier(String value) {
   return RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$').hasMatch(value);
 }
@@ -1763,16 +2092,155 @@ List<String> _selectClassInnerTemplates(
   return selected.toSet().toList();
 }
 
+_StringMemberPlan _buildStringMemberPlan(
+  ClassInnerStringNoiseConfig config,
+  Random random, {
+  required String prefix,
+  required String className,
+}) {
+  if (!config.enabled) return _StringMemberPlan([]);
+  final count = _randomInRange(
+    random,
+    config.memberStringCountPerClass.min,
+    config.memberStringCountPerClass.max,
+  );
+  final strings = <_StringNoiseItem>[];
+  for (var i = 0; i < count; i++) {
+    strings.add(_renderStringNoiseItem(
+      config,
+      random,
+      prefix: prefix,
+      className: className,
+      methodName: 'member',
+      index: i,
+    ));
+  }
+  return _StringMemberPlan(strings);
+}
+
+List<_StringNoiseItem> _buildLocalStringNoise(
+  ClassInnerStringNoiseConfig config,
+  Random random, {
+  required String prefix,
+  required String className,
+  required String methodName,
+}) {
+  if (!config.enabled) return [];
+  final count = _randomInRange(
+    random,
+    config.localStringCountPerHook.min,
+    config.localStringCountPerHook.max,
+  );
+  return [
+    for (var i = 0; i < count; i++)
+      _renderStringNoiseItem(
+        config,
+        random,
+        prefix: prefix,
+        className: className,
+        methodName: methodName,
+        index: i,
+      ),
+  ];
+}
+
+_StringNoiseItem _renderStringNoiseItem(
+  ClassInnerStringNoiseConfig config,
+  Random random, {
+  required String prefix,
+  required String className,
+  required String methodName,
+  required int index,
+}) {
+  final template = _pickStringNoiseTemplate(config, random);
+  final value = _fitStringNoiseLength(
+    _renderTemplate(template.body, {
+      'prefix': prefix.replaceFirst('_', ''),
+      'className': className,
+      'methodName': methodName,
+      'seed': '${random.nextInt(900000) + 100000}',
+      'word': _stringNoiseWords[random.nextInt(_stringNoiseWords.length)],
+      'verb': _stringNoiseVerbs[random.nextInt(_stringNoiseVerbs.length)],
+      'noun': _stringNoiseNouns[random.nextInt(_stringNoiseNouns.length)],
+      'index': '$index',
+    }),
+    config,
+    random,
+  );
+  return _StringNoiseItem(templateId: template.id, value: value);
+}
+
+NoiseTemplate _pickStringNoiseTemplate(
+  ClassInnerStringNoiseConfig config,
+  Random random,
+) {
+  final weighted = <NoiseTemplate>[];
+  for (final template in config.templates) {
+    final weight = config.templateWeights[template.id] ?? 1;
+    for (var i = 0; i < weight; i++) {
+      weighted.add(template);
+    }
+  }
+  return weighted[random.nextInt(weighted.length)];
+}
+
+String _fitStringNoiseLength(
+  String value,
+  ClassInnerStringNoiseConfig config,
+  Random random,
+) {
+  var result = value.trim();
+  while (result.length < config.minLength) {
+    result =
+        '${result}_${_stringNoiseWords[random.nextInt(_stringNoiseWords.length)]}';
+  }
+  if (result.length > config.maxLength) {
+    result = result.substring(0, config.maxLength);
+  }
+  return result;
+}
+
+String _dartStringLiteral(String value) {
+  final escaped = value
+      .replaceAll(r'\', r'\\')
+      .replaceAll("'", r"\'")
+      .replaceAll('\$', r'\$')
+      .replaceAll('\n', r'\n')
+      .replaceAll('\r', r'\r');
+  return "'$escaped'";
+}
+
 String _classInnerMembersSource(
   String prefix,
   List<String> templates,
   Random random,
+  _StringMemberPlan stringPlan,
 ) {
   final seed = random.nextInt(1 << 20) + 1;
   final buffer = StringBuffer()
     ..writeln('  $_classInnerMemberMarker')
     ..writeln('  static final int ${prefix}Seed = identityHashCode(\'$seed\');')
-    ..writeln()
+    ..writeln();
+  if (!stringPlan.isEmpty) {
+    for (var i = 0; i < stringPlan.strings.length; i++) {
+      buffer.writeln(
+          '  static const String ${prefix}Text$i = ${_dartStringLiteral(stringPlan.strings[i].value)};');
+    }
+    buffer.writeln('  static const List<String> ${prefix}Texts = [');
+    for (var i = 0; i < stringPlan.strings.length; i++) {
+      buffer.writeln('    ${prefix}Text$i,');
+    }
+    buffer
+      ..writeln('  ];')
+      ..writeln('  static const Map<String, String> ${prefix}TextMap = {');
+    for (var i = 0; i < stringPlan.strings.length; i++) {
+      buffer.writeln('    ${_dartStringLiteral('k$i')}: ${prefix}Text$i,');
+    }
+    buffer
+      ..writeln('  };')
+      ..writeln();
+  }
+  buffer
     ..writeln('  static int ${prefix}Retain(Object? seed) {')
     ..writeln('    final refs = <Object?>[');
   for (final template in templates.where(
@@ -1782,6 +2250,12 @@ String _classInnerMembersSource(
   buffer
     ..writeln('    ];')
     ..writeln('    var value = ${prefix}SyncHash(seed) ^ refs.length;');
+  if (!stringPlan.isEmpty) {
+    buffer
+      ..writeln('    value ^= ${prefix}Texts.length;')
+      ..writeln('    value ^= ${prefix}Texts.first.hashCode;')
+      ..writeln('    value ^= ${prefix}TextMap.length;');
+  }
   if (templates.contains('sync_switch')) {
     buffer.writeln('    value ^= ${prefix}SyncSwitch(value);');
   }
@@ -1842,9 +2316,14 @@ List<String> _classInnerMemberNames(
   String prefix,
   List<String> templates,
   String className,
+  _StringMemberPlan stringPlan,
 ) {
   return [
     '$className.${prefix}Seed',
+    for (var i = 0; i < stringPlan.strings.length; i++)
+      '$className.${prefix}Text$i',
+    if (!stringPlan.isEmpty) '$className.${prefix}Texts',
+    if (!stringPlan.isEmpty) '$className.${prefix}TextMap',
     '$className.${prefix}Retain',
     '$className.${prefix}SyncHash',
     if (templates.contains('sync_switch')) '$className.${prefix}SyncSwitch',
@@ -1937,18 +2416,58 @@ String _classInnerHookSource(
   required String className,
   required String methodName,
   required bool isStatic,
+  required ClassInnerStringNoiseConfig stringNoise,
+  required Random random,
+  required String file,
+  required List<Map<String, dynamic>> stringsInjected,
+  required Set<String> stringTemplatesUsed,
 }) {
   final localName = 'obfNoise${genRandomKey(6)}';
   final seed = isStatic
       ? "Object.hash('$className', '$methodName')"
       : 'identityHashCode(this)';
-  return '''
+  final localStrings = _buildLocalStringNoise(
+    stringNoise,
+    random,
+    prefix: prefix,
+    className: className,
+    methodName: methodName,
+  );
+  for (final item in localStrings) {
+    stringTemplatesUsed.add(item.templateId);
+    stringsInjected.add({
+      'file': file,
+      'class': className,
+      'method': methodName,
+      'kind': 'local',
+      'templateId': item.templateId,
+      'value': item.value,
+    });
+  }
+  final buffer = StringBuffer()
+    ..writeln()
+    ..writeln();
+  final textSeedName = 'obfTextSeed${genRandomKey(5)}';
+  if (localStrings.isNotEmpty) {
+    buffer.writeln('    var $textSeedName = $seed;');
+  }
+  for (var i = 0; i < localStrings.length; i++) {
+    final textName = 'obfText${genRandomKey(6)}';
+    buffer
+      ..writeln(
+          '    final $textName = ${_dartStringLiteral(localStrings[i].value)};')
+      ..writeln(
+          '    $textSeedName ^= $textName.codeUnits.fold<int>($seed, (value, unit) => ((value * 31) ^ unit) & 0x3fffffff);');
+  }
+  final retainSeed = localStrings.isEmpty ? seed : textSeedName;
+  buffer.write('''
 
-    final $localName = ${prefix}Retain($seed); $_classInnerHookMarker
+    final $localName = ${prefix}Retain($retainSeed); $_classInnerHookMarker
     if ($localName == -1) {
       ${prefix}Retain($localName);
     }
-''';
+''');
+  return buffer.toString();
 }
 
 _ImportInsertions _classInnerImportInsertions(
@@ -2008,11 +2527,9 @@ String _applyInsertions(String source, List<_SourceInsertion> insertions) {
 }
 
 String? _normalizeImportLine(String line) {
-  final match =
-      RegExp(
-        r'''import\s+['"]([^'"]+)['"]\s*(?:as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*;''',
-      )
-          .firstMatch(line.trim());
+  final match = RegExp(
+    r'''import\s+['"]([^'"]+)['"]\s*(?:as\s+([A-Za-z_][A-Za-z0-9_]*))?\s*;''',
+  ).firstMatch(line.trim());
   if (match == null) return null;
   final uri = match.group(1)!;
   final prefix = match.group(2);

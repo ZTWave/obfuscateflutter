@@ -230,6 +230,32 @@ x.在临时生成目录中进行执行上述混淆任务并打包
     "maxTargetLines": 8000,
     "maxMembersPerClass": 16,
     "maxHooksPerFile": 30,
+    "stringNoise": {
+      "enabled": true,
+      "memberStringCountPerClass": [2, 6],
+      "localStringCountPerHook": [0, 3],
+      "minLength": 6,
+      "maxLength": 96,
+      "templates": [
+        {
+          "id": "session_word_seed",
+          "value": "session_{{word}}_{{seed}}"
+        },
+        {
+          "id": "trace_context",
+          "value": "trace.{{className}}.{{methodName}}.{{index}}"
+        },
+        {
+          "id": "cache_ready",
+          "value": "cache {{noun}} ready {{seed}}"
+        }
+      ],
+      "templateWeights": {
+        "session_word_seed": 2,
+        "trace_context": 3,
+        "cache_ready": 2
+      }
+    },
     "skipFiles": [
       "**/*.g.dart",
       "**/*.freezed.dart",
@@ -346,9 +372,39 @@ Future, Stream, async, await, Timer, import, export, part, dart:io, dart:async, 
 | `classInnerNoise.maxTargetLines` | 本次最多新增源码行数。 |
 | `classInnerNoise.maxMembersPerClass` | 单个类内最多新增垃圾成员数量。 |
 | `classInnerNoise.maxHooksPerFile` | 单个 Dart 文件最多插入业务 hook 数量。 |
+| `classInnerNoise.stringNoise.enabled` | 是否启用可读垃圾 String 注入。默认启用。 |
+| `classInnerNoise.stringNoise.memberStringCountPerClass` | 每个目标 class 内生成的成员字符串数量范围，例如 `[2, 6]`。 |
+| `classInnerNoise.stringNoise.localStringCountPerHook` | 每个 hook 点插入的方法局部字符串数量范围，例如 `[0, 3]`。 |
+| `classInnerNoise.stringNoise.templates` | 可读字符串模板，使用 `{ "id": "...", "value": "..." }`。 |
+| `classInnerNoise.stringNoise.templateWeights` | 字符串模板权重。 |
+| `classInnerNoise.stringNoise.minLength` / `maxLength` | 渲染后字符串长度边界。 |
 | `classInnerNoise.skipFiles` | 跳过文件规则。 |
 | `classInnerNoise.templateGroups.executedLightweight` | 可被业务 hook 轻量触达的同步模板。 |
 | `classInnerNoise.templateGroups.retainedOnly` | 只被 retain 函数引用的模板。 |
+
+类内 String 注入会保持明文可读，不使用功能4的 `des()` 加密。生成形态包括：
+
+```dart
+static const String _obfXxxText0 = 'trace.Repo.load.0';
+static const List<String> _obfXxxTexts = [_obfXxxText0];
+static const Map<String, String> _obfXxxTextMap = {'k0': _obfXxxText0};
+
+final obfTextAbc = 'cache payload ready 123456';
+var obfTextSeed = obfTextAbc.codeUnits.fold<int>(seed, ...);
+```
+
+支持的 String 模板占位符：
+
+| 占位符 | 说明 |
+| --- | --- |
+| `{{prefix}}` | 本次 class 注入前缀。 |
+| `{{className}}` | 当前类名。 |
+| `{{methodName}}` | 当前方法名；成员字符串使用 `member`。 |
+| `{{seed}}` | 随机数字。 |
+| `{{word}}` / `{{verb}}` / `{{noun}}` | 内置中性可读词库。 |
+| `{{index}}` | 当前字符串序号。 |
+
+String 模板只能是普通文本，不允许换行、分号、`import`、`part`、`class`、`Future`、`await` 等代码片段。菜单 11 的映射文档会额外输出 `string_templates_used` 和 `strings_injected`，用于追踪注入的模板、位置和实际字符串。
 
 类内模板和自动 import：
 
