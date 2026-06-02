@@ -1,0 +1,1018 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+
+import 'package:image/image.dart' as img;
+import 'package:obfuscateflutter/log.dart';
+import 'package:path/path.dart' as p;
+
+const _configFileName = 'obfuscate_dart_noise.json';
+const _manifestStart = '<!-- obfuscateflutter: android-noise start -->';
+const _manifestEnd = '<!-- obfuscateflutter: android-noise end -->';
+const _defaultPackageSegment = 'platform';
+const _defaultClassTemplates = [
+  'AnalyticsSession{{component}}',
+  'PaymentRoute{{component}}',
+  'CacheProfile{{component}}',
+  'ContentSync{{component}}',
+];
+const _defaultMethodTemplates = [
+  'collectSessionSignal',
+  'mergePaymentRoute',
+  'resolveCacheProfile',
+  'traceContentSync',
+];
+const _defaultStringTemplates = [
+  'session {{component}} payload {{index}}',
+  'payment route {{className}} {{index}}',
+  'cache profile {{methodName}} {{index}}',
+  'content sync channel {{index}}',
+];
+const _defaultSourceTemplates = {
+  'activity': [
+    '''
+package {{packageName}};
+
+import android.app.Activity;
+import android.os.Bundle;
+import java.util.ArrayList;
+import java.util.List;
+
+public class {{className}} extends Activity {
+  @Override
+  protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    {{methodName}}(savedInstanceState);
+  }
+
+{{sharedMethods}}
+}
+''',
+  ],
+  'service': [
+    '''
+package {{packageName}};
+
+import android.app.Service;
+import android.content.Intent;
+import android.os.Bundle;
+import android.os.IBinder;
+import java.util.ArrayList;
+import java.util.List;
+
+public class {{className}} extends Service {
+  @Override
+  public IBinder onBind(Intent intent) {
+    {{methodName}}(intent == null ? null : intent.getExtras());
+    return null;
+  }
+
+  @Override
+  public int onStartCommand(Intent intent, int flags, int startId) {
+    {{methodName}}(intent == null ? null : intent.getExtras());
+    return START_NOT_STICKY;
+  }
+
+{{sharedMethods}}
+}
+''',
+  ],
+  'receiver': [
+    '''
+package {{packageName}};
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Bundle;
+import java.util.ArrayList;
+import java.util.List;
+
+public class {{className}} extends BroadcastReceiver {
+  @Override
+  public void onReceive(Context context, Intent intent) {
+    {{methodName}}(intent == null ? null : intent.getExtras());
+  }
+
+{{sharedMethods}}
+}
+''',
+  ],
+  'provider': [
+    '''
+package {{packageName}};
+
+import android.content.ContentProvider;
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Bundle;
+import java.util.ArrayList;
+import java.util.List;
+
+public class {{className}} extends ContentProvider {
+  @Override
+  public boolean onCreate() {
+    {{methodName}}(null);
+    return true;
+  }
+
+  @Override
+  public Cursor query(Uri uri, String[] projection, String selection, String[] selectionArgs, String sortOrder) {
+    {{methodName}}(null);
+    return null;
+  }
+
+  @Override
+  public String getType(Uri uri) {
+    return "vnd.android.cursor.item/platform";
+  }
+
+  @Override
+  public Uri insert(Uri uri, ContentValues values) {
+    {{methodName}}(null);
+    return uri;
+  }
+
+  @Override
+  public int delete(Uri uri, String selection, String[] selectionArgs) {
+    return {{methodName}}(null) & 1;
+  }
+
+  @Override
+  public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
+    return {{methodName}}(null) & 3;
+  }
+
+{{sharedMethods}}
+}
+''',
+  ],
+};
+const _defaultDrawableTemplates = [
+  {
+    'name': 'activity_panel',
+    'body': '''
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#01000000" />
+    <size android:width="2dp" android:height="2dp" />
+</shape>
+''',
+  },
+];
+const _defaultLayoutTemplates = [
+  {
+    'name': 'session_marker',
+    'body': '''
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="1dp"
+    android:layout_height="1dp"
+    android:background="@drawable/{{drawableName}}" />
+''',
+  },
+];
+
+void runAndroidNoiseGeneration(String projectPath) {
+  final projectDir = Directory(projectPath);
+  if (!projectDir.existsSync()) {
+    throw StateError('Project directory not found: $projectPath');
+  }
+
+  final androidDir = Directory(p.join(projectPath, 'android'));
+  if (!androidDir.existsSync()) {
+    throw StateError('android project not found in $projectPath');
+  }
+
+  final mainDir = Directory(p.join(
+    projectPath,
+    'android',
+    'app',
+    'src',
+    'main',
+  ));
+  if (!mainDir.existsSync()) {
+    throw StateError('android app main source set not found: ${mainDir.path}');
+  }
+
+  final manifestFile = File(p.join(mainDir.path, 'AndroidManifest.xml'));
+  if (!manifestFile.existsSync()) {
+    throw StateError('AndroidManifest.xml not found: ${manifestFile.path}');
+  }
+
+  final config = AndroidNoiseConfig.load(projectPath);
+  if (!config.enabled) {
+    Log.log('Android noise generation is disabled by config.');
+    return;
+  }
+
+  final namespace = _resolveNamespace(projectPath, manifestFile);
+  final generated = _generateAndroidNoise(
+    projectPath: projectPath,
+    mainDir: mainDir,
+    manifestFile: manifestFile,
+    namespace: namespace,
+    config: config,
+  );
+
+  final mappingPath =
+      p.join(projectPath, 'android_noise_mapping_${_timestamp()}.json');
+  File(mappingPath).writeAsStringSync(
+    const JsonEncoder.withIndent('  ').convert({
+      'generated_at': DateTime.now().toIso8601String(),
+      'config': config.toJson(),
+      'config_file': config.configSource,
+      'namespace': namespace,
+      'package': generated.packageName,
+      'generated_components': generated.components,
+      'generated_resources': generated.resources,
+      'manifest_entries': generated.manifestEntries,
+    }),
+  );
+
+  Log.log('Android noise generation complete.');
+  Log.log('Mapping document: $mappingPath');
+}
+
+class AndroidNoiseConfig {
+  AndroidNoiseConfig({
+    required this.enabled,
+    required this.activityCount,
+    required this.serviceCount,
+    required this.receiverCount,
+    required this.providerCount,
+    required this.packageSegment,
+    required this.classNameTemplates,
+    required this.methodNameTemplates,
+    required this.stringTemplates,
+    required this.sourceTemplates,
+    required this.generateXmlResources,
+    required this.generateImageResources,
+    required this.drawableXmlTemplates,
+    required this.layoutXmlTemplates,
+    required this.configSource,
+  });
+
+  final bool enabled;
+  final int activityCount;
+  final int serviceCount;
+  final int receiverCount;
+  final int providerCount;
+  final String packageSegment;
+  final List<String> classNameTemplates;
+  final List<String> methodNameTemplates;
+  final List<String> stringTemplates;
+  final Map<String, List<String>> sourceTemplates;
+  final bool generateXmlResources;
+  final bool generateImageResources;
+  final List<AndroidXmlResourceTemplate> drawableXmlTemplates;
+  final List<AndroidXmlResourceTemplate> layoutXmlTemplates;
+  final String configSource;
+
+  static AndroidNoiseConfig load(String projectPath) {
+    final file = _resolveConfigFile(projectPath);
+    var configSource = 'defaults';
+    var json = <String, dynamic>{};
+    if (file.existsSync()) {
+      final decoded = jsonDecode(file.readAsStringSync());
+      if (decoded is! Map<String, dynamic>) {
+        throw StateError('$_configFileName must contain a JSON object.');
+      }
+      json = decoded;
+      configSource = p.equals(p.dirname(file.path), p.normalize(projectPath))
+          ? 'project'
+          : 'tool_default';
+    }
+
+    final value = json['androidNoise'];
+    if (value == null) {
+      return AndroidNoiseConfig.defaults(configSource);
+    }
+    if (value is! Map<String, dynamic>) {
+      throw StateError('androidNoise must be a JSON object.');
+    }
+
+    final counts = value['componentCount'] is Map<String, dynamic>
+        ? value['componentCount'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final nameTemplates = value['nameTemplates'] is Map<String, dynamic>
+        ? value['nameTemplates'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final resources = value['generateResources'] is Map<String, dynamic>
+        ? value['generateResources'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final sourceTemplates = value['sourceTemplates'] is Map<String, dynamic>
+        ? value['sourceTemplates'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final resourceTemplates = value['resourceTemplates'] is Map<String, dynamic>
+        ? value['resourceTemplates'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final packageSegment = value['packageSegment'] ?? _defaultPackageSegment;
+    if (packageSegment is! String ||
+        !_isPackageSegment(packageSegment.trim())) {
+      throw StateError(
+          'androidNoise.packageSegment must be a Java package segment.');
+    }
+
+    return AndroidNoiseConfig(
+      enabled: value['enabled'] != false,
+      activityCount: _readOptionalCount(counts, 'activity', 1),
+      serviceCount: _readOptionalCount(counts, 'service', 1),
+      receiverCount: _readOptionalCount(counts, 'receiver', 1),
+      providerCount: _readOptionalCount(counts, 'provider', 1),
+      packageSegment: packageSegment.trim(),
+      classNameTemplates: _readTemplateList(
+        nameTemplates,
+        'classNames',
+        _defaultClassTemplates,
+      ),
+      methodNameTemplates: _readTemplateList(
+        nameTemplates,
+        'methodNames',
+        _defaultMethodTemplates,
+      ),
+      stringTemplates: _readTemplateList(
+        value,
+        'stringTemplates',
+        _defaultStringTemplates,
+      ),
+      sourceTemplates: _readSourceTemplates(sourceTemplates),
+      generateXmlResources: resources['xml'] != false,
+      generateImageResources: resources['images'] != false,
+      drawableXmlTemplates: _readXmlResourceTemplates(
+        resourceTemplates,
+        'drawableXml',
+        _defaultDrawableTemplates,
+      ),
+      layoutXmlTemplates: _readXmlResourceTemplates(
+        resourceTemplates,
+        'layoutXml',
+        _defaultLayoutTemplates,
+      ),
+      configSource: configSource,
+    );
+  }
+
+  factory AndroidNoiseConfig.defaults(String configSource) {
+    return AndroidNoiseConfig(
+      enabled: true,
+      activityCount: 1,
+      serviceCount: 1,
+      receiverCount: 1,
+      providerCount: 1,
+      packageSegment: _defaultPackageSegment,
+      classNameTemplates: List<String>.from(_defaultClassTemplates),
+      methodNameTemplates: List<String>.from(_defaultMethodTemplates),
+      stringTemplates: List<String>.from(_defaultStringTemplates),
+      sourceTemplates: _cloneDefaultSourceTemplates(),
+      generateXmlResources: true,
+      generateImageResources: true,
+      drawableXmlTemplates: _defaultDrawableTemplates
+          .map(AndroidXmlResourceTemplate.fromDefault)
+          .toList(),
+      layoutXmlTemplates: _defaultLayoutTemplates
+          .map(AndroidXmlResourceTemplate.fromDefault)
+          .toList(),
+      configSource: configSource,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'enabled': enabled,
+      'componentCount': {
+        'activity': activityCount,
+        'service': serviceCount,
+        'receiver': receiverCount,
+        'provider': providerCount,
+      },
+      'packageSegment': packageSegment,
+      'nameTemplates': {
+        'classNames': classNameTemplates,
+        'methodNames': methodNameTemplates,
+      },
+      'stringTemplates': stringTemplates,
+      'sourceTemplates': sourceTemplates,
+      'generateResources': {
+        'xml': generateXmlResources,
+        'images': generateImageResources,
+      },
+      'resourceTemplates': {
+        'drawableXml':
+            drawableXmlTemplates.map((template) => template.toJson()).toList(),
+        'layoutXml':
+            layoutXmlTemplates.map((template) => template.toJson()).toList(),
+      },
+      'configSource': configSource,
+    };
+  }
+}
+
+class AndroidXmlResourceTemplate {
+  AndroidXmlResourceTemplate({
+    required this.name,
+    required this.body,
+  });
+
+  final String name;
+  final String body;
+
+  factory AndroidXmlResourceTemplate.fromDefault(Map<String, String> json) {
+    return AndroidXmlResourceTemplate(
+      name: json['name']!,
+      body: json['body']!,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'body': body,
+    };
+  }
+}
+
+class _GeneratedAndroidNoise {
+  _GeneratedAndroidNoise({
+    required this.packageName,
+    required this.components,
+    required this.resources,
+    required this.manifestEntries,
+  });
+
+  final String packageName;
+  final List<Map<String, dynamic>> components;
+  final List<String> resources;
+  final List<String> manifestEntries;
+}
+
+class _ComponentSpec {
+  _ComponentSpec({
+    required this.type,
+    required this.manifestTag,
+    required this.baseClass,
+    required this.className,
+    required this.methodName,
+    required this.index,
+    required this.sourceTemplateOffset,
+  });
+
+  final String type;
+  final String manifestTag;
+  final String baseClass;
+  final String className;
+  final String methodName;
+  final int index;
+  final int sourceTemplateOffset;
+}
+
+_GeneratedAndroidNoise _generateAndroidNoise({
+  required String projectPath,
+  required Directory mainDir,
+  required File manifestFile,
+  required String namespace,
+  required AndroidNoiseConfig config,
+}) {
+  final packageName = '$namespace.${config.packageSegment}';
+  final packagePath = packageName.split('.');
+  final javaDir = Directory(p.joinAll([
+    mainDir.path,
+    'java',
+    ...packagePath,
+  ]));
+  javaDir.createSync(recursive: true);
+
+  final resources = <String>[];
+  if (config.generateXmlResources) {
+    resources.addAll(_writeXmlResources(
+      mainDir: mainDir,
+      namespace: namespace,
+      packageName: packageName,
+      config: config,
+    ));
+  }
+  if (config.generateImageResources) {
+    resources.add(_writeImageResource(mainDir));
+  }
+
+  final specs = _buildComponentSpecs(config);
+  final components = <Map<String, dynamic>>[];
+  for (final spec in specs) {
+    final file = File(p.join(javaDir.path, '${spec.className}.java'));
+    file.writeAsStringSync(_javaSource(
+      packageName: packageName,
+      spec: spec,
+      config: config,
+    ));
+    components.add({
+      'type': spec.type,
+      'class': '$packageName.${spec.className}',
+      'file': _posixRelative(file.path, from: projectPath),
+      'method': spec.methodName,
+    });
+  }
+
+  final manifestEntries = specs
+      .map((spec) => _manifestEntry(namespace, packageName, spec))
+      .toList();
+  _injectManifestEntries(manifestFile, manifestEntries);
+
+  return _GeneratedAndroidNoise(
+    packageName: packageName,
+    components: components,
+    resources: resources,
+    manifestEntries: manifestEntries,
+  );
+}
+
+List<_ComponentSpec> _buildComponentSpecs(AndroidNoiseConfig config) {
+  final specs = <_ComponentSpec>[];
+  final usedClassNames = <String>{};
+  final usedMethodNames = <String>{};
+  void add(String type, String tag, String baseClass, int count) {
+    final sourceTemplateCount = config.sourceTemplates[type]?.length ?? 1;
+    final sourceTemplateOffset =
+        sourceTemplateCount <= 1 ? 0 : Random().nextInt(sourceTemplateCount);
+    for (var i = 0; i < count; i++) {
+      final className = _uniqueName(
+        _renderClassName(config.classNameTemplates, type, i),
+        usedClassNames,
+      );
+      final methodName = _uniqueName(
+        _renderMethodName(config.methodNameTemplates, i),
+        usedMethodNames,
+        lowerCamel: true,
+      );
+      specs.add(_ComponentSpec(
+        type: type,
+        manifestTag: tag,
+        baseClass: baseClass,
+        className: className,
+        methodName: methodName,
+        index: i,
+        sourceTemplateOffset: sourceTemplateOffset,
+      ));
+    }
+  }
+
+  add('activity', 'activity', 'Activity', config.activityCount);
+  add('service', 'service', 'Service', config.serviceCount);
+  add('receiver', 'receiver', 'BroadcastReceiver', config.receiverCount);
+  add('provider', 'provider', 'ContentProvider', config.providerCount);
+  return specs;
+}
+
+String _javaSource({
+  required String packageName,
+  required _ComponentSpec spec,
+  required AndroidNoiseConfig config,
+}) {
+  final templates = config.sourceTemplates[spec.type];
+  if (templates == null || templates.isEmpty) {
+    throw StateError('Unsupported Android component: ${spec.type}');
+  }
+  final template = _selectSourceTemplate(templates, spec);
+  return _renderSourceTemplate(
+    template,
+    packageName: packageName,
+    spec: spec,
+    config: config,
+  );
+}
+
+String _sharedMethods(
+  _ComponentSpec spec,
+  AndroidNoiseConfig config,
+  String parameter,
+) {
+  final label = _renderStringTemplate(
+    config.stringTemplates[spec.index % config.stringTemplates.length],
+    spec,
+  );
+  return '''
+  private int ${spec.methodName}($parameter) {
+    StringBuilder builder = new StringBuilder("$label");
+    List<String> segments = new ArrayList<>();
+    segments.add("${spec.type}");
+    segments.add("${spec.className}");
+    segments.add("${spec.methodName}");
+    if (bundle != null) {
+      for (String key : bundle.keySet()) {
+        Object value = bundle.get(key);
+        segments.add(key + ":" + String.valueOf(value));
+      }
+    }
+    int checksum = builder.length();
+    for (String segment : segments) {
+      checksum = (checksum * 31) ^ segment.hashCode();
+      builder.append('|').append(segment);
+    }
+    return checksum ^ builder.toString().hashCode();
+  }
+
+  private String ${spec.methodName}Label(int seed) {
+    StringBuilder builder = new StringBuilder("${spec.className}");
+    builder.append('#').append(seed);
+    builder.append(':').append("${spec.type}");
+    return builder.toString();
+  }
+''';
+}
+
+String _manifestEntry(
+    String namespace, String packageName, _ComponentSpec spec) {
+  final classRef = '$packageName.${spec.className}';
+  final common =
+      'android:name="$classRef"\n            android:exported="false"';
+  if (spec.type == 'activity') {
+    return '''        <activity
+            $common
+            android:theme="@style/ActivityPanelTheme" />''';
+  }
+  if (spec.type == 'provider') {
+    return '''        <provider
+            $common
+            android:authorities="$namespace.${spec.className}.provider" />''';
+  }
+  return '''        <${spec.manifestTag}
+            $common />''';
+}
+
+void _injectManifestEntries(File manifestFile, List<String> entries) {
+  final source = manifestFile.readAsStringSync();
+  final block = [
+    _manifestStart,
+    ...entries,
+    _manifestEnd,
+  ].join('\n');
+  final markerPattern = RegExp(
+    '${RegExp.escape(_manifestStart)}[\\s\\S]*?${RegExp.escape(_manifestEnd)}',
+  );
+
+  var updated = source;
+  if (markerPattern.hasMatch(updated)) {
+    updated = updated.replaceFirst(markerPattern, block);
+  } else {
+    final appClose = updated.lastIndexOf('</application>');
+    if (appClose < 0) {
+      throw StateError(
+          'AndroidManifest.xml must contain an <application> node.');
+    }
+    updated = updated.replaceRange(appClose, appClose, '    $block\n');
+  }
+  manifestFile.writeAsStringSync(updated);
+}
+
+List<String> _writeXmlResources({
+  required Directory mainDir,
+  required String namespace,
+  required String packageName,
+  required AndroidNoiseConfig config,
+}) {
+  final drawableDir = Directory(p.join(mainDir.path, 'res', 'drawable'));
+  final valuesDir = Directory(p.join(mainDir.path, 'res', 'values'));
+  final layoutDir = Directory(p.join(mainDir.path, 'res', 'layout'));
+  drawableDir.createSync(recursive: true);
+  valuesDir.createSync(recursive: true);
+  layoutDir.createSync(recursive: true);
+
+  final generated = <String>[];
+  final firstDrawableName = config.drawableXmlTemplates.isEmpty
+      ? 'activity_panel'
+      : config.drawableXmlTemplates.first.name;
+  for (var i = 0; i < config.drawableXmlTemplates.length; i++) {
+    final template = config.drawableXmlTemplates[i];
+    final file = File(p.join(drawableDir.path, '${template.name}.xml'));
+    file.writeAsStringSync(_renderResourceTemplate(
+      template.body,
+      namespace: namespace,
+      packageName: packageName,
+      resourceName: template.name,
+      drawableName: firstDrawableName,
+      index: i,
+    ));
+    generated.add(_posixRelative(
+      file.path,
+      from: p.dirname(p.dirname(mainDir.path)),
+    ));
+  }
+
+  final styles = File(p.join(valuesDir.path, 'activity_panel_styles.xml'));
+  styles.writeAsStringSync('''
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="ActivityPanelTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">#01000000</item>
+    </style>
+</resources>
+''');
+  generated.add(_posixRelative(
+    styles.path,
+    from: p.dirname(p.dirname(mainDir.path)),
+  ));
+
+  for (var i = 0; i < config.layoutXmlTemplates.length; i++) {
+    final template = config.layoutXmlTemplates[i];
+    final file = File(p.join(layoutDir.path, '${template.name}.xml'));
+    file.writeAsStringSync(_renderResourceTemplate(
+      template.body,
+      namespace: namespace,
+      packageName: packageName,
+      resourceName: template.name,
+      drawableName: firstDrawableName,
+      index: i,
+    ));
+    generated.add(_posixRelative(
+      file.path,
+      from: p.dirname(p.dirname(mainDir.path)),
+    ));
+  }
+
+  return generated;
+}
+
+String _writeImageResource(Directory mainDir) {
+  final drawableDir = Directory(p.join(mainDir.path, 'res', 'drawable'));
+  drawableDir.createSync(recursive: true);
+  final image = img.Image(width: 4, height: 4);
+  for (var y = 0; y < image.height; y++) {
+    for (var x = 0; x < image.width; x++) {
+      image.setPixelRgba(x, y, 1 + x, 1 + y, 1, 1);
+    }
+  }
+  final file = File(p.join(drawableDir.path, 'profile_badge.png'));
+  file.writeAsBytesSync(img.encodePng(image));
+  return _posixRelative(file.path, from: p.dirname(p.dirname(mainDir.path)));
+}
+
+String _resolveNamespace(String projectPath, File manifestFile) {
+  final gradleFiles = [
+    File(p.join(projectPath, 'android', 'app', 'build.gradle')),
+    File(p.join(projectPath, 'android', 'app', 'build.gradle.kts')),
+  ];
+  for (final file in gradleFiles) {
+    if (!file.existsSync()) continue;
+    final source = file.readAsStringSync();
+    final match = RegExp(
+      r'''namespace\s*(?:=)?\s*['"]([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+)['"]''',
+    ).firstMatch(source);
+    if (match != null) return match.group(1)!;
+  }
+
+  final manifest = manifestFile.readAsStringSync();
+  final packageMatch = RegExp(
+    r'''<manifest\b[^>]*\bpackage\s*=\s*['"]([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+)['"]''',
+  ).firstMatch(manifest);
+  if (packageMatch != null) return packageMatch.group(1)!;
+
+  throw StateError('Android namespace not found. Add android.namespace in '
+      'android/app/build.gradle or a manifest package attribute.');
+}
+
+File _resolveConfigFile(String projectPath) {
+  final projectConfig = File(p.join(projectPath, _configFileName));
+  if (projectConfig.existsSync()) return projectConfig;
+  return File(p.join(Directory.current.path, _configFileName));
+}
+
+int _readOptionalCount(
+    Map<String, dynamic> json, String key, int defaultValue) {
+  final value = json[key];
+  if (value == null) return defaultValue;
+  if (value is! int || value < 0 || value > 100) {
+    throw StateError('androidNoise.componentCount.$key must be from 0 to 100.');
+  }
+  return value;
+}
+
+List<String> _readTemplateList(
+  Map<String, dynamic> json,
+  String key,
+  List<String> defaults,
+) {
+  final value = json[key];
+  if (value == null) return List<String>.from(defaults);
+  if (value is! List || value.isEmpty) {
+    throw StateError('androidNoise.$key must be a non-empty string array.');
+  }
+  return value.map((item) {
+    if (item is! String || item.trim().isEmpty) {
+      throw StateError('androidNoise.$key must be a non-empty string array.');
+    }
+    return item.trim();
+  }).toList();
+}
+
+List<AndroidXmlResourceTemplate> _readXmlResourceTemplates(
+  Map<String, dynamic> json,
+  String key,
+  List<Map<String, String>> defaults,
+) {
+  final value = json[key];
+  if (value == null) {
+    return defaults.map(AndroidXmlResourceTemplate.fromDefault).toList();
+  }
+  if (value is! List || value.isEmpty) {
+    throw StateError(
+        'androidNoise.resourceTemplates.$key must be a non-empty array.');
+  }
+  return value.map((item) {
+    if (item is! Map<String, dynamic>) {
+      throw StateError(
+          'androidNoise.resourceTemplates.$key entries must be objects.');
+    }
+    final name = item['name'];
+    final body = item['body'];
+    if (name is! String || !_isAndroidResourceName(name.trim())) {
+      throw StateError(
+          'androidNoise.resourceTemplates.$key.name must be an Android resource name.');
+    }
+    if (body is! String || body.trim().isEmpty) {
+      throw StateError(
+          'androidNoise.resourceTemplates.$key.body must be non-empty.');
+    }
+    return AndroidXmlResourceTemplate(
+      name: name.trim(),
+      body: body,
+    );
+  }).toList();
+}
+
+Map<String, List<String>> _readSourceTemplates(Map<String, dynamic> json) {
+  final templates = _cloneDefaultSourceTemplates();
+  for (final entry in json.entries) {
+    if (!templates.containsKey(entry.key)) {
+      throw StateError(
+          'androidNoise.sourceTemplates.${entry.key} is not supported.');
+    }
+    final value = entry.value;
+    if (value is! List || value.isEmpty) {
+      throw StateError(
+          'androidNoise.sourceTemplates.${entry.key} must be a non-empty string array.');
+    }
+    templates[entry.key] = value.map((item) {
+      if (item is! String || item.trim().isEmpty) {
+        throw StateError(
+            'androidNoise.sourceTemplates.${entry.key} must be a non-empty string array.');
+      }
+      return item;
+    }).toList();
+  }
+  return templates;
+}
+
+Map<String, List<String>> _cloneDefaultSourceTemplates() {
+  return _defaultSourceTemplates.map(
+    (key, value) => MapEntry(key, List<String>.from(value)),
+  );
+}
+
+String _selectSourceTemplate(List<String> templates, _ComponentSpec spec) {
+  if (templates.length == 1) return templates.first;
+  return templates[(spec.sourceTemplateOffset + spec.index) % templates.length];
+}
+
+String _renderSourceTemplate(
+  String template, {
+  required String packageName,
+  required _ComponentSpec spec,
+  required AndroidNoiseConfig config,
+}) {
+  final label = _renderStringTemplate(
+    config.stringTemplates[spec.index % config.stringTemplates.length],
+    spec,
+  );
+  final namespace = packageName.endsWith('.${config.packageSegment}')
+      ? packageName.substring(
+          0,
+          packageName.length - config.packageSegment.length - 1,
+        )
+      : packageName;
+  return template
+      .replaceAll('{{packageName}}', packageName)
+      .replaceAll('{{namespace}}', namespace)
+      .replaceAll('{{className}}', spec.className)
+      .replaceAll('{{methodName}}', spec.methodName)
+      .replaceAll('{{component}}', spec.type)
+      .replaceAll('{{componentClass}}', spec.baseClass)
+      .replaceAll('{{manifestTag}}', spec.manifestTag)
+      .replaceAll('{{stringLabel}}', label)
+      .replaceAll('{{index}}', spec.index.toString())
+      .replaceAll(
+        '{{sharedMethods}}',
+        _sharedMethods(spec, config, 'Bundle bundle').trimRight(),
+      );
+}
+
+String _renderResourceTemplate(
+  String template, {
+  required String namespace,
+  required String packageName,
+  required String resourceName,
+  required String drawableName,
+  required int index,
+}) {
+  return template
+      .replaceAll('{{namespace}}', namespace)
+      .replaceAll('{{packageName}}', packageName)
+      .replaceAll('{{resourceName}}', resourceName)
+      .replaceAll('{{drawableName}}', drawableName)
+      .replaceAll('{{index}}', index.toString());
+}
+
+String _renderClassName(List<String> templates, String type, int index) {
+  final component = _componentSuffix(type);
+  final raw = templates[index % templates.length]
+      .replaceAll('{{component}}', component)
+      .replaceAll('{{index}}', index.toString());
+  final name = raw.contains(component) ? raw : '$raw$component';
+  return _toJavaIdentifier(name, upperCamel: true);
+}
+
+String _renderMethodName(List<String> templates, int index) {
+  final raw = templates[index % templates.length].replaceAll(
+    '{{index}}',
+    index.toString(),
+  );
+  return _toJavaIdentifier(raw, upperCamel: false);
+}
+
+String _renderStringTemplate(String template, _ComponentSpec spec) {
+  return template
+      .replaceAll('{{component}}', spec.type)
+      .replaceAll('{{className}}', spec.className)
+      .replaceAll('{{methodName}}', spec.methodName)
+      .replaceAll('{{index}}', spec.index.toString())
+      .replaceAll('"', "'");
+}
+
+String _componentSuffix(String type) {
+  return switch (type) {
+    'activity' => 'Activity',
+    'service' => 'Service',
+    'receiver' => 'Receiver',
+    'provider' => 'Provider',
+    _ => 'Component',
+  };
+}
+
+String _uniqueName(
+  String name,
+  Set<String> used, {
+  bool lowerCamel = false,
+}) {
+  var candidate = lowerCamel ? _lowerFirst(name) : name;
+  var index = 1;
+  while (!used.add(candidate)) {
+    candidate = '${lowerCamel ? _lowerFirst(name) : name}$index';
+    index++;
+  }
+  return candidate;
+}
+
+String _toJavaIdentifier(String value, {required bool upperCamel}) {
+  final parts = value
+      .split(RegExp(r'[^A-Za-z0-9_]+'))
+      .where((part) => part.isNotEmpty)
+      .toList();
+  final buffer = StringBuffer();
+  for (final part in parts.isEmpty ? ['Noise'] : parts) {
+    buffer.write(part[0].toUpperCase());
+    if (part.length > 1) buffer.write(part.substring(1));
+  }
+  var result = buffer.toString().replaceAll(RegExp(r'[^A-Za-z0-9_]'), '');
+  if (result.isEmpty) result = 'Noise';
+  if (RegExp(r'^[0-9]').hasMatch(result)) result = 'Noise$result';
+  return upperCamel ? result : _lowerFirst(result);
+}
+
+String _lowerFirst(String value) {
+  if (value.isEmpty) return value;
+  return value[0].toLowerCase() + value.substring(1);
+}
+
+bool _isPackageSegment(String value) {
+  return RegExp(r'^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$')
+      .hasMatch(value);
+}
+
+bool _isAndroidResourceName(String value) {
+  return RegExp(r'^[a-z][a-z0-9_]*$').hasMatch(value);
+}
+
+String _posixRelative(String filePath, {required String from}) {
+  return p.relative(filePath, from: from).replaceAll(p.separator, '/');
+}
+
+String _timestamp() {
+  final now = DateTime.now();
+  String two(int value) => value.toString().padLeft(2, '0');
+  String three(int value) => value.toString().padLeft(3, '0');
+  return '${now.year}${two(now.month)}${two(now.day)}_'
+      '${two(now.hour)}${two(now.minute)}${two(now.second)}'
+      '${three(now.millisecond)}';
+}

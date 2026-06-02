@@ -1,6 +1,6 @@
 # obfuscateflutter
 
-Flutter 项目混淆辅助工具，支持图片字节扰动、图片资源名清理、Android Proguard 字典生成、Dart 字符串加密、AST 文件/目录重命名、随机 Dart 垃圾文件生成、类内垃圾代码注入，以及常用 release 包构建。
+Flutter 项目混淆辅助工具，支持图片字节扰动、图片资源名清理、Android Proguard 字典生成、Dart 字符串加密、AST 文件/目录重命名、随机 Dart 垃圾文件生成、类内垃圾代码注入、Android 垃圾组件/资源生成，以及常用 release 包构建。
 
 已在 macOS / Windows 测试过基础流程。执行混淆前建议先提交代码或复制一份项目，因为大多数功能会直接修改目标项目文件。
 
@@ -33,6 +33,7 @@ dart run ./bin/obfuscateflutter.dart \
 9.统一混淆（AST方案：文件/目录重命名+混淆文档）
 10.Dart随机代码注入/保留
 11.类内垃圾代码注入
+12.Android项目垃圾代码生成
 x.在临时生成目录中进行执行上述混淆任务并打包
 ```
 
@@ -51,6 +52,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 | `9` | 统一混淆 | AST 重写 import/export/part URI，重命名 `lib` 下目录和 Dart 文件，修正 `.g.dart/.freezed.dart` 的 `part of`，输出映射文档。 | 需要可追踪的文件/目录结构混淆。 |
 | `10` | Dart 随机代码注入/保留 | 在 `lib` 下生成随机 Dart 文件；修改 `lib/main.dart` 注入 retain 调用；输出生成映射文档。 | 增加同步可达代码、页面类、方法类和随机 shard 文件。 |
 | `11` | 类内垃圾代码注入 | 向已有类内部插入垃圾成员和轻量 hook；必要时补 import；输出类内注入映射文档。 | 在不额外链接独立工具文件的前提下，让已有业务类产生差异。 |
+| `12` | Android 项目垃圾代码生成 | 在 `android/app/src/main/java` 下生成 Java 四大组件类；生成 XML/PNG 资源；向 Manifest 注册组件；输出映射文档。 | 让 Android 侧无业务调用的组件和资源在打包后保留。 |
 | `x` | 临时目录执行混淆并打包 | 复制项目到临时目录，依次执行图片 MD5、图片名处理、Proguard 字典、统一混淆，再按选择打包，最后把产物复制回原项目。 | 希望原项目源码保持干净，只拿混淆构建产物。 |
 
 ## 功能说明
@@ -422,6 +424,90 @@ String 模板只能是普通文本，不允许换行、分号、`import`、`part
 | `run_app_stub` | 保留 | `package:flutter/widgets.dart` | 生成 runApp 方法体，只被引用。 |
 | `debug_log_stub` | 保留 | `package:flutter/widgets.dart` | 生成 debugPrint 方法体，只被引用。 |
 
+### 12. Android 项目垃圾代码生成
+
+该功能使用 `obfuscate_dart_noise.json` 中的 `androidNoise` 配置，生成 Android 原生侧 Java 垃圾组件、XML 资源和 PNG 图片资源。
+
+结果：
+
+- 生成 Java 源码到 `android/app/src/main/java/<namespace>/<packageSegment>/`。
+- 自动解析 `android/app/build.gradle(.kts)` 中的 `namespace`；没有 namespace 时兜底读取 Manifest `package`。
+- 生成 Activity、Service、BroadcastReceiver、ContentProvider，并注册到 `android/app/src/main/AndroidManifest.xml`。
+- 组件全部使用 `android:exported="false"`，不添加 `intent-filter`，不会暴露外部启动入口。
+- 默认资源名使用可读业务词，例如 `activity_panel.xml`、`session_marker.xml`、`profile_badge.png`，避免 `noise/obf` 这类特征字段。
+- Manifest 使用 `<!-- obfuscateflutter: android-noise start/end -->` 标记，重复执行会替换旧区块，不会重复注册。
+- 输出 `android_noise_mapping_<timestamp>.json`，记录生成类、资源、Manifest 注入项和配置来源。
+
+默认 Java 类名和方法名会使用业务语义词，例如 `AnalyticsSessionActivity`、`PaymentRouteService`、`collectSessionSignal`。可以通过配置模板调整：
+
+```json
+{
+  "androidNoise": {
+    "enabled": true,
+    "componentCount": {
+      "activity": 4,
+      "service": 4,
+      "receiver": 4,
+      "provider": 2
+    },
+    "packageSegment": "platform",
+    "nameTemplates": {
+      "classNames": [
+        "AnalyticsSession{{component}}",
+        "PaymentRoute{{component}}"
+      ],
+      "methodNames": [
+        "collectSessionSignal",
+        "mergePaymentRoute"
+      ]
+    },
+    "stringTemplates": [
+      "session {{component}} payload {{index}}",
+      "payment route {{className}} {{index}}"
+    ],
+    "generateResources": {
+      "xml": true,
+      "images": true
+    },
+    "resourceTemplates": {
+      "drawableXml": [
+        {
+          "name": "activity_panel",
+          "body": "<shape xmlns:android=\"http://schemas.android.com/apk/res/android\"><solid android:color=\"#01000000\" /></shape>"
+        }
+      ],
+      "layoutXml": [
+        {
+          "name": "session_marker",
+          "body": "<FrameLayout xmlns:android=\"http://schemas.android.com/apk/res/android\" android:layout_width=\"1dp\" android:layout_height=\"1dp\" android:background=\"@drawable/{{drawableName}}\" />"
+        }
+      ]
+    }
+  }
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `androidNoise.enabled` | 是否启用 Android 垃圾代码生成。 |
+| `androidNoise.componentCount.activity/service/receiver/provider` | 四大组件各自生成数量，范围 `0..100`。 |
+| `androidNoise.packageSegment` | 追加到 Android namespace 后的包名片段，例如 `platform`。 |
+| `androidNoise.nameTemplates.classNames` | 类名模板；`{{component}}` 会替换为 `Activity/Service/Receiver/Provider`。 |
+| `androidNoise.nameTemplates.methodNames` | 方法名模板；支持 `{{index}}`。 |
+| `androidNoise.stringTemplates` | 生成方法内使用的可读字符串模板。 |
+| `androidNoise.generateResources.xml/images` | 是否生成 XML 和 PNG 资源。 |
+| `androidNoise.resourceTemplates.drawableXml/layoutXml` | XML 资源模板数组，`name` 是不带扩展名的 Android 资源名，`body` 是写入文件的 XML 内容。 |
+
+XML 资源模板支持占位符：
+
+| 占位符 | 说明 |
+| --- | --- |
+| `{{namespace}}` | Android namespace。 |
+| `{{packageName}}` | 生成 Java 组件包名。 |
+| `{{resourceName}}` | 当前 XML 资源名。 |
+| `{{drawableName}}` | 第一个 drawable XML 资源名，便于 layout 引用。 |
+| `{{index}}` | 当前模板序号。 |
+
 ## 建议流程
 
 需要直接改项目源码时：
@@ -434,6 +520,7 @@ String 模板只能是普通文本，不允许换行、分号、`import`、`part
 9 统一混淆
 10 Dart 随机代码注入
 11 类内垃圾代码注入
+12 Android 项目垃圾代码生成
 5/6/7 打包
 ```
 
