@@ -11,6 +11,7 @@ import 'package:obfuscateflutter/dart_noise_obfuscator.dart';
 import 'package:obfuscateflutter/encrypt_string.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
+import 'package:obfuscateflutter/preflight_checker.dart';
 import 'package:obfuscateflutter/proguard_images.dart';
 import 'package:obfuscateflutter/temp_proj_utils.dart';
 import 'package:obfuscateflutter/unified_obfuscator.dart';
@@ -53,6 +54,12 @@ void main(List<String> arguments) async {
   }
   if (project == null || !project.existsSync()) {
     print('flutter project isn\'t exit!!!');
+    return;
+  }
+
+  final preflightReport = await PreflightChecker().check(project.path);
+  preflightReport.printToConsole();
+  if (!preflightReport.canContinue) {
     return;
   }
 
