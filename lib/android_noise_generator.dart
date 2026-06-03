@@ -10,6 +10,7 @@ const _configFileName = 'obfuscate_dart_noise.json';
 const _manifestStart = '<!-- obfuscateflutter: android-noise start -->';
 const _manifestEnd = '<!-- obfuscateflutter: android-noise end -->';
 const _defaultPackageSegment = 'platform';
+const _activityResourceLayoutName = 'activity_resource_panel';
 const _defaultClassTemplates = [
   'AnalyticsSession{{component}}',
   'PaymentRoute{{component}}',
@@ -43,6 +44,7 @@ public class {{className}} extends Activity {
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     {{methodName}}(savedInstanceState);
+    setContentView({{layoutResourceRef}});
   }
 
 {{sharedMethods}}
@@ -496,6 +498,9 @@ _GeneratedAndroidNoise _generateAndroidNoise({
   if (config.generateImageResources) {
     resources.add(_writeImageResource(mainDir));
   }
+  if (config.activityCount > 0) {
+    resources.add(_writeActivityResourceLayout(mainDir, resources));
+  }
 
   final specs = _buildComponentSpecs(config);
   final components = <Map<String, dynamic>>[];
@@ -640,6 +645,14 @@ String _manifestEntry(
             $common />''';
 }
 
+String? _androidResourceRef(String resourcePath) {
+  final normalized = resourcePath.replaceAll(r'\', '/');
+  final match = RegExp(r'(^|/)res/(drawable|layout)/([^/]+)\.[A-Za-z0-9]+$')
+      .firstMatch(normalized);
+  if (match == null) return null;
+  return '@${match.group(2)}/${match.group(3)}';
+}
+
 void _injectManifestEntries(File manifestFile, List<String> entries) {
   final source = manifestFile.readAsStringSync();
   final block = [
@@ -746,6 +759,49 @@ String _writeImageResource(Directory mainDir) {
   }
   final file = File(p.join(drawableDir.path, 'profile_badge.png'));
   file.writeAsBytesSync(img.encodePng(image));
+  return _posixRelative(file.path, from: p.dirname(p.dirname(mainDir.path)));
+}
+
+String _writeActivityResourceLayout(
+  Directory mainDir,
+  List<String> resources,
+) {
+  final layoutDir = Directory(p.join(mainDir.path, 'res', 'layout'));
+  layoutDir.createSync(recursive: true);
+  final refs = resources
+      .map(_androidResourceRef)
+      .whereType<String>()
+      .where((ref) => ref != '@layout/$_activityResourceLayoutName')
+      .toList();
+  final children = <String>[];
+  for (var i = 0; i < refs.length; i++) {
+    final ref = refs[i];
+    if (ref.startsWith('@layout/')) {
+      children.add('''
+    <include
+        android:id="@+id/resource_panel_include_$i"
+        layout="$ref" />''');
+    } else {
+      children.add('''
+    <ImageView
+        android:id="@+id/resource_panel_drawable_$i"
+        android:layout_width="1dp"
+        android:layout_height="1dp"
+        android:alpha="0.01"
+        android:contentDescription="@null"
+        android:src="$ref" />''');
+    }
+  }
+  final file = File(p.join(layoutDir.path, '$_activityResourceLayoutName.xml'));
+  file.writeAsStringSync('''
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="1dp"
+    android:layout_height="1dp"
+    android:visibility="gone">
+${children.join('\n')}
+</FrameLayout>
+''');
   return _posixRelative(file.path, from: p.dirname(p.dirname(mainDir.path)));
 }
 
@@ -901,6 +957,11 @@ String _renderSourceTemplate(
       .replaceAll('{{componentClass}}', spec.baseClass)
       .replaceAll('{{manifestTag}}', spec.manifestTag)
       .replaceAll('{{stringLabel}}', label)
+      .replaceAll('{{layoutResourceName}}', _activityResourceLayoutName)
+      .replaceAll(
+        '{{layoutResourceRef}}',
+        '$namespace.R.layout.$_activityResourceLayoutName',
+      )
       .replaceAll('{{index}}', spec.index.toString())
       .replaceAll(
         '{{sharedMethods}}',

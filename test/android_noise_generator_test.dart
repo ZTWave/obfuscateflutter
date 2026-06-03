@@ -29,6 +29,7 @@ void main() {
     expect(manifest, contains('<provider'));
     expect(manifest, contains('android:exported="false"'));
     expect(manifest, isNot(contains('<intent-filter')));
+    expect(manifest, isNot(contains('<meta-data')));
 
     final javaRoot = Directory(p.join(
       projectDir.path,
@@ -55,6 +56,7 @@ void main() {
         contains('extends Service'),
         contains('extends BroadcastReceiver'),
         contains('extends ContentProvider'),
+        contains('setContentView(com.example.sample.R.layout.activity_resource_panel)'),
         contains('StringBuilder'),
         contains('Bundle'),
       ),
@@ -73,6 +75,21 @@ void main() {
       )).existsSync(),
       isTrue,
     );
+    final retainLayout = File(p.join(
+      projectDir.path,
+      'android',
+      'app',
+      'src',
+      'main',
+      'res',
+      'layout',
+      'activity_resource_panel.xml',
+    ));
+    expect(retainLayout.existsSync(), isTrue);
+    final retainLayoutSource = retainLayout.readAsStringSync();
+    expect(retainLayoutSource, contains('@drawable/activity_panel'));
+    expect(retainLayoutSource, contains('@drawable/profile_badge'));
+    expect(retainLayoutSource, contains('@layout/session_marker'));
     expect(
       File(p.join(
         projectDir.path,
