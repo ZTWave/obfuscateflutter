@@ -161,7 +161,8 @@ class PreflightChecker {
       case GitStatusResult.clean:
         return;
       case GitStatusResult.dirty:
-        fatalIssues.add('git status 不干净，请先提交、暂存或清理目标项目改动。');
+        // fatalIssues.add('git status 不干净，请先提交、暂存或清理目标项目改动。');
+        warnings.add('git status 不干净，请尽量先提交、暂存或清理目标项目改动。');
       case GitStatusResult.unavailable:
         warnings.add('无法确认 git status，请确认目标项目是 Git 仓库且 git 命令可用。');
     }

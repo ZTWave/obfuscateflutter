@@ -436,7 +436,8 @@ String 模板只能是普通文本，不允许换行、分号、`import`、`part
 - 组件全部使用 `android:exported="false"`，不添加 `intent-filter`，不会暴露外部启动入口。
 - 默认资源名使用可读业务词，例如 `activity_panel.xml`、`session_marker.xml`、`profile_badge.png`，避免 `noise/obf` 这类特征字段。
 - Manifest 使用 `<!-- obfuscateflutter: android-noise start/end -->` 标记，重复执行会替换旧区块，不会重复注册。
-- 输出 `android_noise_mapping_<timestamp>.json`，记录生成类、资源、Manifest 注入项和配置来源。
+- 可选开启 `deepObfuscation`，对 Android 自有 package、class、resource 名称做更深的业务语义伪装。
+- 输出 `android_noise_mapping_<timestamp>.json`，记录生成类、资源、Manifest 注入项、深度重命名、跳过项和配置来源。
 
 默认 Java 类名和方法名会使用业务语义词，例如 `AnalyticsSessionActivity`、`PaymentRouteService`、`collectSessionSignal`。可以通过配置模板调整：
 
@@ -469,6 +470,42 @@ String 模板只能是普通文本，不允许换行、分号、`import`、`part
       "xml": true,
       "images": true
     },
+    "deepObfuscation": {
+      "enabled": false,
+      "skipFiles": [
+        "**/GeneratedPluginRegistrant.java",
+        "**/GeneratedPluginRegistrant.kt",
+        "**/MainActivity.java",
+        "**/MainActivity.kt"
+      ],
+      "skipClasses": [
+        "GeneratedPluginRegistrant",
+        "MainActivity"
+      ],
+      "skipPackages": [],
+      "skipResources": [
+        "ic_launcher*",
+        "mipmap/ic_launcher*"
+      ],
+      "packageTemplates": [
+        "account.{{word}}"
+      ],
+      "classTemplates": [
+        "Session{{className}}"
+      ],
+      "resourceTemplates": [
+        "profile_{{name}}"
+      ],
+      "semanticWords": [
+        "profile",
+        "session",
+        "account"
+      ],
+      "reflectionRewrite": {
+        "enabled": true,
+        "strict": true
+      }
+    },
     "resourceTemplates": {
       "drawableXml": [
         {
@@ -497,6 +534,18 @@ String 模板只能是普通文本，不允许换行、分号、`import`、`part
 | `androidNoise.stringTemplates` | 生成方法内使用的可读字符串模板。 |
 | `androidNoise.generateResources.xml/images` | 是否生成 XML 和 PNG 资源。 |
 | `androidNoise.resourceTemplates.drawableXml/layoutXml` | XML 资源模板数组，`name` 是不带扩展名的 Android 资源名，`body` 是写入文件的 XML 内容。 |
+| `androidNoise.deepObfuscation.enabled` | 是否开启 Android 全工程深度命名混淆；默认关闭。 |
+| `androidNoise.deepObfuscation.skipFiles/skipClasses/skipPackages/skipResources` | 跳过模板；默认保护 `GeneratedPluginRegistrant`、`MainActivity` 和 launcher 图标。 |
+| `androidNoise.deepObfuscation.packageTemplates/classTemplates/resourceTemplates/semanticWords` | 深度混淆名称模板；使用业务语义词，不生成 `noise/obf` 字段。 |
+| `androidNoise.deepObfuscation.reflectionRewrite.enabled/strict` | 是否重写明确反射 API 中的完整类名字符串；严格模式不会改普通字符串。 |
+
+深度混淆会同步更新：
+
+- Java/Kotlin 的 `package`、`import`、全限定类名、`R.type.name`。
+- `AndroidManifest.xml` 和 `res/**/*.xml` 中的组件类名、自定义 View 标签、`@layout/@drawable/...` 等资源引用。
+- 明确反射上下文中的完整类名字符串，例如 `Class.forName("...")`、`loadClass("...")`、`Intent.setClassName(...)`、`ComponentName(...)`。
+
+普通字符串、日志文案、URL、JSON key 不会做全局替换。拼接形式的反射字符串不会自动修改，会写入 mapping 的 `warnings`。
 
 XML 资源模板支持占位符：
 

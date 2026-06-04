@@ -29,6 +29,56 @@ const _defaultStringTemplates = [
   'cache profile {{methodName}} {{index}}',
   'content sync channel {{index}}',
 ];
+const _defaultDeepPackageTemplates = [
+  'account.{{word}}',
+  'session.{{word}}',
+  'profile.{{word}}',
+  'payment.{{word}}',
+];
+const _defaultDeepClassTemplates = [
+  'Session{{className}}',
+  'Account{{className}}',
+  'Profile{{className}}',
+  'Payment{{className}}',
+];
+const _defaultDeepResourceTemplates = [
+  'profile_{{name}}',
+  'session_{{name}}',
+  'account_{{name}}',
+  'payment_{{name}}',
+];
+const _defaultDeepSemanticWords = [
+  'profile',
+  'session',
+  'account',
+  'payment',
+  'cache',
+  'route',
+];
+const _defaultSkipFiles = [
+  '**/GeneratedPluginRegistrant.java',
+  '**/GeneratedPluginRegistrant.kt',
+  '**/MainActivity.java',
+  '**/MainActivity.kt',
+];
+const _defaultSkipClasses = [
+  'GeneratedPluginRegistrant',
+  'MainActivity',
+];
+const _defaultSkipResources = [
+  'ic_launcher*',
+  'mipmap/ic_launcher*',
+];
+const _resourceReferenceTypes = {
+  'anim',
+  'color',
+  'drawable',
+  'layout',
+  'menu',
+  'mipmap',
+  'xml',
+  'style',
+};
 const _defaultSourceTemplates = {
   'activity': [
     '''
@@ -218,6 +268,15 @@ void runAndroidNoiseGeneration(String projectPath) {
     namespace: namespace,
     config: config,
   );
+  final deepResult = config.deepObfuscation.enabled
+      ? _runAndroidDeepObfuscation(
+          projectPath: projectPath,
+          mainDir: mainDir,
+          manifestFile: manifestFile,
+          namespace: namespace,
+          config: config.deepObfuscation,
+        )
+      : _AndroidDeepObfuscationResult.empty();
 
   final mappingPath =
       p.join(projectPath, 'android_noise_mapping_${_timestamp()}.json');
@@ -231,6 +290,12 @@ void runAndroidNoiseGeneration(String projectPath) {
       'generated_components': generated.components,
       'generated_resources': generated.resources,
       'manifest_entries': generated.manifestEntries,
+      'package_renames': deepResult.packageRenames,
+      'class_renames': deepResult.classRenames,
+      'resource_renames': deepResult.resourceRenames,
+      'reflection_rewrites': deepResult.reflectionRewrites,
+      'skipped_items': deepResult.skippedItems,
+      'warnings': deepResult.warnings,
     }),
   );
 
@@ -254,6 +319,7 @@ class AndroidNoiseConfig {
     required this.generateImageResources,
     required this.drawableXmlTemplates,
     required this.layoutXmlTemplates,
+    required this.deepObfuscation,
     required this.configSource,
   });
 
@@ -271,6 +337,7 @@ class AndroidNoiseConfig {
   final bool generateImageResources;
   final List<AndroidXmlResourceTemplate> drawableXmlTemplates;
   final List<AndroidXmlResourceTemplate> layoutXmlTemplates;
+  final AndroidDeepObfuscationConfig deepObfuscation;
   final String configSource;
 
   static AndroidNoiseConfig load(String projectPath) {
@@ -310,6 +377,9 @@ class AndroidNoiseConfig {
         : <String, dynamic>{};
     final resourceTemplates = value['resourceTemplates'] is Map<String, dynamic>
         ? value['resourceTemplates'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    final deepObfuscation = value['deepObfuscation'] is Map<String, dynamic>
+        ? value['deepObfuscation'] as Map<String, dynamic>
         : <String, dynamic>{};
     final packageSegment = value['packageSegment'] ?? _defaultPackageSegment;
     if (packageSegment is! String ||
@@ -353,6 +423,7 @@ class AndroidNoiseConfig {
         'layoutXml',
         _defaultLayoutTemplates,
       ),
+      deepObfuscation: AndroidDeepObfuscationConfig.fromJson(deepObfuscation),
       configSource: configSource,
     );
   }
@@ -377,6 +448,7 @@ class AndroidNoiseConfig {
       layoutXmlTemplates: _defaultLayoutTemplates
           .map(AndroidXmlResourceTemplate.fromDefault)
           .toList(),
+      deepObfuscation: AndroidDeepObfuscationConfig.defaults(),
       configSource: configSource,
     );
   }
@@ -407,7 +479,122 @@ class AndroidNoiseConfig {
         'layoutXml':
             layoutXmlTemplates.map((template) => template.toJson()).toList(),
       },
+      'deepObfuscation': deepObfuscation.toJson(),
       'configSource': configSource,
+    };
+  }
+}
+
+class AndroidDeepObfuscationConfig {
+  AndroidDeepObfuscationConfig({
+    required this.enabled,
+    required this.skipFiles,
+    required this.skipClasses,
+    required this.skipPackages,
+    required this.skipResources,
+    required this.packageTemplates,
+    required this.classTemplates,
+    required this.resourceTemplates,
+    required this.semanticWords,
+    required this.reflectionRewriteEnabled,
+    required this.reflectionRewriteStrict,
+  });
+
+  final bool enabled;
+  final List<String> skipFiles;
+  final List<String> skipClasses;
+  final List<String> skipPackages;
+  final List<String> skipResources;
+  final List<String> packageTemplates;
+  final List<String> classTemplates;
+  final List<String> resourceTemplates;
+  final List<String> semanticWords;
+  final bool reflectionRewriteEnabled;
+  final bool reflectionRewriteStrict;
+
+  factory AndroidDeepObfuscationConfig.defaults() {
+    return AndroidDeepObfuscationConfig(
+      enabled: false,
+      skipFiles: List<String>.from(_defaultSkipFiles),
+      skipClasses: List<String>.from(_defaultSkipClasses),
+      skipPackages: const [],
+      skipResources: List<String>.from(_defaultSkipResources),
+      packageTemplates: List<String>.from(_defaultDeepPackageTemplates),
+      classTemplates: List<String>.from(_defaultDeepClassTemplates),
+      resourceTemplates: List<String>.from(_defaultDeepResourceTemplates),
+      semanticWords: List<String>.from(_defaultDeepSemanticWords),
+      reflectionRewriteEnabled: true,
+      reflectionRewriteStrict: true,
+    );
+  }
+
+  factory AndroidDeepObfuscationConfig.fromJson(Map<String, dynamic> json) {
+    final defaults = AndroidDeepObfuscationConfig.defaults();
+    final reflection = json['reflectionRewrite'] is Map<String, dynamic>
+        ? json['reflectionRewrite'] as Map<String, dynamic>
+        : <String, dynamic>{};
+    return AndroidDeepObfuscationConfig(
+      enabled: json['enabled'] == true,
+      skipFiles: _readMergedTemplateList(
+        json,
+        'skipFiles',
+        defaults.skipFiles,
+      ),
+      skipClasses: _readMergedTemplateList(
+        json,
+        'skipClasses',
+        defaults.skipClasses,
+      ),
+      skipPackages: _readMergedTemplateList(
+        json,
+        'skipPackages',
+        defaults.skipPackages,
+      ),
+      skipResources: _readMergedTemplateList(
+        json,
+        'skipResources',
+        defaults.skipResources,
+      ),
+      packageTemplates: _readTemplateList(
+        json,
+        'packageTemplates',
+        defaults.packageTemplates,
+      ),
+      classTemplates: _readTemplateList(
+        json,
+        'classTemplates',
+        defaults.classTemplates,
+      ),
+      resourceTemplates: _readTemplateList(
+        json,
+        'resourceTemplates',
+        defaults.resourceTemplates,
+      ),
+      semanticWords: _readTemplateList(
+        json,
+        'semanticWords',
+        defaults.semanticWords,
+      ),
+      reflectionRewriteEnabled: reflection['enabled'] != false,
+      reflectionRewriteStrict: reflection['strict'] != false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'enabled': enabled,
+      'skipFiles': skipFiles,
+      'skipClasses': skipClasses,
+      'skipPackages': skipPackages,
+      'skipResources': skipResources,
+      'packageTemplates': packageTemplates,
+      'classTemplates': classTemplates,
+      'resourceTemplates': resourceTemplates,
+      'semanticWords': semanticWords,
+      'reflectionRewrite': {
+        'enabled': reflectionRewriteEnabled,
+        'strict': reflectionRewriteStrict,
+      },
     };
   }
 }
@@ -448,6 +635,71 @@ class _GeneratedAndroidNoise {
   final List<Map<String, dynamic>> components;
   final List<String> resources;
   final List<String> manifestEntries;
+}
+
+class _AndroidDeepObfuscationResult {
+  _AndroidDeepObfuscationResult({
+    required this.packageRenames,
+    required this.classRenames,
+    required this.resourceRenames,
+    required this.reflectionRewrites,
+    required this.skippedItems,
+    required this.warnings,
+  });
+
+  final Map<String, String> packageRenames;
+  final Map<String, String> classRenames;
+  final Map<String, String> resourceRenames;
+  final List<Map<String, String>> reflectionRewrites;
+  final List<Map<String, String>> skippedItems;
+  final List<String> warnings;
+
+  factory _AndroidDeepObfuscationResult.empty() {
+    return _AndroidDeepObfuscationResult(
+      packageRenames: const {},
+      classRenames: const {},
+      resourceRenames: const {},
+      reflectionRewrites: const [],
+      skippedItems: const [],
+      warnings: const [],
+    );
+  }
+}
+
+class _AndroidSourceSymbol {
+  _AndroidSourceSymbol({
+    required this.file,
+    required this.relativePath,
+    required this.packageName,
+    required this.className,
+    required this.extension,
+  });
+
+  final File file;
+  final String relativePath;
+  final String packageName;
+  final String className;
+  final String extension;
+
+  String get fqcn => '$packageName.$className';
+}
+
+class _AndroidResourceSymbol {
+  _AndroidResourceSymbol({
+    required this.file,
+    required this.relativePath,
+    required this.type,
+    required this.name,
+    required this.extension,
+  });
+
+  final File file;
+  final String relativePath;
+  final String type;
+  final String name;
+  final String extension;
+
+  String get key => '$type/$name';
 }
 
 class _ComponentSpec {
@@ -530,6 +782,459 @@ _GeneratedAndroidNoise _generateAndroidNoise({
     resources: resources,
     manifestEntries: manifestEntries,
   );
+}
+
+_AndroidDeepObfuscationResult _runAndroidDeepObfuscation({
+  required String projectPath,
+  required Directory mainDir,
+  required File manifestFile,
+  required String namespace,
+  required AndroidDeepObfuscationConfig config,
+}) {
+  final stopwatch = Stopwatch()..start();
+  Log.log('Android deep obfuscation started.');
+  final skipped = <Map<String, String>>[];
+  final warnings = <String>[];
+  final reflectionRewrites = <Map<String, String>>[];
+  final sourceSymbols = _collectAndroidSourceSymbols(
+    projectPath: projectPath,
+    mainDir: mainDir,
+    namespace: namespace,
+    config: config,
+    skipped: skipped,
+  );
+  Log.log(
+      'Android deep obfuscation scan: source=${sourceSymbols.length}, skipped=${skipped.length}, elapsed=${stopwatch.elapsedMilliseconds}ms');
+  final packageRenames = _buildPackageRenames(
+    sourceSymbols,
+    namespace,
+    config,
+  );
+  final classRenames = _buildClassRenames(
+    sourceSymbols,
+    packageRenames,
+    config,
+  );
+  final resources = _collectAndroidResourceSymbols(
+    mainDir: mainDir,
+    config: config,
+    skipped: skipped,
+  );
+  final resourceRenames = _buildResourceRenames(resources, config);
+  Log.log(
+      'Android deep obfuscation scan: resources=${resources.length}, packageRenames=${packageRenames.length}, classRenames=${classRenames.length}, resourceRenames=${resourceRenames.length}, elapsed=${stopwatch.elapsedMilliseconds}ms');
+
+  final rewrittenSources = _rewriteAndroidSourceFiles(
+    sourceSymbols: sourceSymbols,
+    packageRenames: packageRenames,
+    classRenames: classRenames,
+    resourceRenames: resourceRenames,
+    config: config,
+    reflectionRewrites: reflectionRewrites,
+    warnings: warnings,
+  );
+  final rewrittenSkippedSources = _rewriteSkippedAndroidSourceFiles(
+    projectPath: projectPath,
+    mainDir: mainDir,
+    sourceSymbols: sourceSymbols,
+    namespace: namespace,
+    packageRenames: packageRenames,
+    classRenames: classRenames,
+    resourceRenames: resourceRenames,
+    config: config,
+    reflectionRewrites: reflectionRewrites,
+    warnings: warnings,
+  );
+  final rewrittenXml = _rewriteAndroidXmlFiles(
+    mainDir: mainDir,
+    manifestFile: manifestFile,
+    classRenames: classRenames,
+    resourceRenames: resourceRenames,
+  );
+  Log.log(
+      'Android deep obfuscation rewrite: sourceFiles=$rewrittenSources, skippedSourceFiles=$rewrittenSkippedSources, xmlFiles=$rewrittenXml, reflectionRewrites=${reflectionRewrites.length}, warnings=${warnings.length}, elapsed=${stopwatch.elapsedMilliseconds}ms');
+  final movedResources = _moveAndroidResources(resources, resourceRenames);
+  final movedSources = _moveAndroidSourceFiles(
+    mainDir: mainDir,
+    sourceSymbols: sourceSymbols,
+    packageRenames: packageRenames,
+    classRenames: classRenames,
+  );
+  Log.log(
+      'Android deep obfuscation move: sourceFiles=$movedSources, resources=$movedResources, elapsed=${stopwatch.elapsedMilliseconds}ms');
+  Log.log(
+      'Android deep obfuscation complete: elapsed=${stopwatch.elapsedMilliseconds}ms');
+
+  return _AndroidDeepObfuscationResult(
+    packageRenames: packageRenames,
+    classRenames: classRenames,
+    resourceRenames: resourceRenames,
+    reflectionRewrites: reflectionRewrites,
+    skippedItems: skipped,
+    warnings: warnings,
+  );
+}
+
+List<_AndroidSourceSymbol> _collectAndroidSourceSymbols({
+  required String projectPath,
+  required Directory mainDir,
+  required String namespace,
+  required AndroidDeepObfuscationConfig config,
+  required List<Map<String, String>> skipped,
+}) {
+  final roots = [
+    Directory(p.join(mainDir.path, 'java')),
+    Directory(p.join(mainDir.path, 'kotlin')),
+  ];
+  final symbols = <_AndroidSourceSymbol>[];
+  for (final root in roots) {
+    if (!root.existsSync()) continue;
+    for (final entity in root.listSync(recursive: true)) {
+      if (entity is! File) continue;
+      final extension = p.extension(entity.path);
+      if (extension != '.java' && extension != '.kt') continue;
+      final relative = _posixRelative(entity.path, from: projectPath);
+      if (_matchesAnyGlob(relative, config.skipFiles)) {
+        skipped.add({
+          'kind': 'file',
+          'path': relative,
+          'reason': 'matched skipFiles',
+        });
+        continue;
+      }
+      final source = entity.readAsStringSync();
+      final packageName = _readAndroidPackage(source);
+      final className = _readAndroidClassName(source, extension);
+      if (packageName == null || className == null) continue;
+      if (!packageName.startsWith(namespace)) continue;
+      if (_matchesAnyGlob(className, config.skipClasses)) {
+        skipped.add({
+          'kind': 'class',
+          'path': relative,
+          'name': className,
+          'reason': 'matched skipClasses',
+        });
+        continue;
+      }
+      if (_matchesAnyPackage(packageName, config.skipPackages)) {
+        skipped.add({
+          'kind': 'package',
+          'path': relative,
+          'name': packageName,
+          'reason': 'matched skipPackages',
+        });
+        continue;
+      }
+      symbols.add(_AndroidSourceSymbol(
+        file: entity,
+        relativePath: relative,
+        packageName: packageName,
+        className: className,
+        extension: extension,
+      ));
+    }
+  }
+  return symbols;
+}
+
+Map<String, String> _buildPackageRenames(
+  List<_AndroidSourceSymbol> symbols,
+  String namespace,
+  AndroidDeepObfuscationConfig config,
+) {
+  final packages = symbols.map((symbol) => symbol.packageName).toSet().toList()
+    ..sort();
+  final result = <String, String>{};
+  for (var i = 0; i < packages.length; i++) {
+    final oldPackage = packages[i];
+    final word = config.semanticWords[i % config.semanticWords.length];
+    final template =
+        config.packageTemplates[i % config.packageTemplates.length];
+    final segment = template
+        .replaceAll('{{word}}', _toPackageSegment(word))
+        .replaceAll('{{index}}', i.toString())
+        .replaceAll('{{packageName}}', oldPackage.split('.').last);
+    final newPackage = '$namespace.$segment';
+    if (newPackage != oldPackage) result[oldPackage] = newPackage;
+  }
+  return result;
+}
+
+Map<String, String> _buildClassRenames(
+  List<_AndroidSourceSymbol> symbols,
+  Map<String, String> packageRenames,
+  AndroidDeepObfuscationConfig config,
+) {
+  final usedByPackage = <String, Set<String>>{};
+  final result = <String, String>{};
+  for (var i = 0; i < symbols.length; i++) {
+    final symbol = symbols[i];
+    final template = config.classTemplates[i % config.classTemplates.length];
+    final raw = template
+        .replaceAll('{{className}}', symbol.className)
+        .replaceAll(
+            '{{word}}', config.semanticWords[i % config.semanticWords.length])
+        .replaceAll('{{index}}', i.toString());
+    final newClassName = _uniqueName(
+      _toJavaIdentifier(raw, upperCamel: true),
+      usedByPackage.putIfAbsent(
+        packageRenames[symbol.packageName] ?? symbol.packageName,
+        () => <String>{},
+      ),
+    );
+    if (newClassName != symbol.className) {
+      result[symbol.fqcn] =
+          '${packageRenames[symbol.packageName] ?? symbol.packageName}.$newClassName';
+    }
+  }
+  return result;
+}
+
+List<_AndroidResourceSymbol> _collectAndroidResourceSymbols({
+  required Directory mainDir,
+  required AndroidDeepObfuscationConfig config,
+  required List<Map<String, String>> skipped,
+}) {
+  final resDir = Directory(p.join(mainDir.path, 'res'));
+  if (!resDir.existsSync()) return const [];
+  final symbols = <_AndroidResourceSymbol>[];
+  for (final entity in resDir.listSync(recursive: true)) {
+    if (entity is! File) continue;
+    final parent = p.basename(p.dirname(entity.path));
+    final type = parent.split('-').first;
+    if (!_resourceReferenceTypes.contains(type)) continue;
+    final name = p.basenameWithoutExtension(entity.path);
+    final extension = p.extension(entity.path);
+    final relative = _posixRelative(entity.path, from: mainDir.path);
+    if (_matchesAnyResource(type, name, config.skipResources)) {
+      skipped.add({
+        'kind': 'resource',
+        'path': relative,
+        'name': '$type/$name',
+        'reason': 'matched skipResources',
+      });
+      continue;
+    }
+    symbols.add(_AndroidResourceSymbol(
+      file: entity,
+      relativePath: relative,
+      type: type,
+      name: name,
+      extension: extension,
+    ));
+  }
+  return symbols;
+}
+
+Map<String, String> _buildResourceRenames(
+  List<_AndroidResourceSymbol> symbols,
+  AndroidDeepObfuscationConfig config,
+) {
+  final usedByType = <String, Set<String>>{};
+  final result = <String, String>{};
+  for (var i = 0; i < symbols.length; i++) {
+    final symbol = symbols[i];
+    final template =
+        config.resourceTemplates[i % config.resourceTemplates.length];
+    final raw = template
+        .replaceAll('{{name}}', symbol.name)
+        .replaceAll('{{type}}', symbol.type)
+        .replaceAll(
+            '{{word}}', config.semanticWords[i % config.semanticWords.length])
+        .replaceAll('{{index}}', i.toString());
+    var newName = _toAndroidResourceName(raw);
+    final used = usedByType.putIfAbsent(symbol.type, () => <String>{});
+    final base = newName;
+    var suffix = 1;
+    while (used.contains(newName)) {
+      newName = '${base}_$suffix';
+      suffix++;
+    }
+    used.add(newName);
+    if (newName != symbol.name) {
+      result[symbol.key] = '${symbol.type}/$newName';
+    }
+  }
+  return result;
+}
+
+int _rewriteAndroidSourceFiles({
+  required List<_AndroidSourceSymbol> sourceSymbols,
+  required Map<String, String> packageRenames,
+  required Map<String, String> classRenames,
+  required Map<String, String> resourceRenames,
+  required AndroidDeepObfuscationConfig config,
+  required List<Map<String, String>> reflectionRewrites,
+  required List<String> warnings,
+}) {
+  final classRenameEntries = _sortedClassRenameEntries(classRenames);
+  var processed = 0;
+  var rewrittenFiles = 0;
+  for (final symbol in sourceSymbols) {
+    var source = symbol.file.readAsStringSync();
+    final original = source;
+    source = _rewritePackageDeclarations(source, packageRenames);
+    source = _rewriteImportsAndTypeNames(
+      source,
+      packageRenames,
+      classRenames,
+      classRenameEntries,
+    );
+    source = _rewriteResourceReferencesInCode(source, resourceRenames);
+    if (config.reflectionRewriteEnabled) {
+      source = _rewriteReflectionReferences(
+        source: source,
+        classRenames: classRenames,
+        strict: config.reflectionRewriteStrict,
+        reflectionRewrites: reflectionRewrites,
+      );
+      warnings.addAll(_findConcatenatedReflectionWarnings(source));
+    }
+    if (source != original) {
+      symbol.file.writeAsStringSync(source);
+      rewrittenFiles++;
+    }
+    processed++;
+    if (processed % 50 == 0) {
+      Log.log(
+          'Android deep obfuscation rewrite: processed source files=$processed');
+    }
+  }
+  return rewrittenFiles;
+}
+
+int _rewriteSkippedAndroidSourceFiles({
+  required String projectPath,
+  required Directory mainDir,
+  required List<_AndroidSourceSymbol> sourceSymbols,
+  required String namespace,
+  required Map<String, String> packageRenames,
+  required Map<String, String> classRenames,
+  required Map<String, String> resourceRenames,
+  required AndroidDeepObfuscationConfig config,
+  required List<Map<String, String>> reflectionRewrites,
+  required List<String> warnings,
+}) {
+  final includedPaths = sourceSymbols.map((symbol) => symbol.file.path).toSet();
+  final classRenameEntries = _sortedClassRenameEntries(classRenames);
+  var rewrittenFiles = 0;
+  for (final rootName in const ['java', 'kotlin']) {
+    final root = Directory(p.join(mainDir.path, rootName));
+    if (!root.existsSync()) continue;
+    for (final entity in root.listSync(recursive: true)) {
+      if (entity is! File || includedPaths.contains(entity.path)) continue;
+      final extension = p.extension(entity.path);
+      if (extension != '.java' && extension != '.kt') continue;
+      final source = entity.readAsStringSync();
+      final packageName = _readAndroidPackage(source);
+      final className = _readAndroidClassName(source, extension);
+      if (packageName == null || className == null) continue;
+      if (!packageName.startsWith(namespace)) continue;
+      var updated = _rewriteImportsAndTypeNames(
+        source,
+        packageRenames,
+        classRenames,
+        classRenameEntries,
+        rewriteDeclarations: false,
+      );
+      updated = _rewriteResourceReferencesInCode(updated, resourceRenames);
+      if (config.reflectionRewriteEnabled) {
+        updated = _rewriteReflectionReferences(
+          source: updated,
+          classRenames: classRenames,
+          strict: config.reflectionRewriteStrict,
+          reflectionRewrites: reflectionRewrites,
+        );
+        warnings.addAll(_findConcatenatedReflectionWarnings(updated));
+      }
+      if (updated != source) {
+        entity.writeAsStringSync(updated);
+        rewrittenFiles++;
+      }
+    }
+  }
+  return rewrittenFiles;
+}
+
+int _rewriteAndroidXmlFiles({
+  required Directory mainDir,
+  required File manifestFile,
+  required Map<String, String> classRenames,
+  required Map<String, String> resourceRenames,
+}) {
+  final classRenameEntries = _sortedClassRenameEntries(classRenames);
+  final files = <File>[manifestFile];
+  final resDir = Directory(p.join(mainDir.path, 'res'));
+  if (resDir.existsSync()) {
+    files.addAll(resDir
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => p.extension(file.path) == '.xml'));
+  }
+  for (final file in files) {
+    final source = file.readAsStringSync();
+    final updated = _rewriteXmlOutsideComments(
+      source,
+      (segment) => _rewriteXmlSegment(
+        segment,
+        classRenameEntries: classRenameEntries,
+        resourceRenames: resourceRenames,
+      ),
+    );
+    if (updated != source) {
+      file.writeAsStringSync(updated);
+    }
+  }
+  return files.length;
+}
+
+int _moveAndroidResources(
+  List<_AndroidResourceSymbol> symbols,
+  Map<String, String> resourceRenames,
+) {
+  var moved = 0;
+  for (final symbol in symbols) {
+    final newKey = resourceRenames[symbol.key];
+    if (newKey == null) continue;
+    final newName = newKey.split('/').last;
+    final target = File(p.join(
+      p.dirname(symbol.file.path),
+      '$newName${symbol.extension}',
+    ));
+    if (target.path == symbol.file.path) continue;
+    target.parent.createSync(recursive: true);
+    symbol.file.renameSync(target.path);
+    moved++;
+  }
+  return moved;
+}
+
+int _moveAndroidSourceFiles({
+  required Directory mainDir,
+  required List<_AndroidSourceSymbol> sourceSymbols,
+  required Map<String, String> packageRenames,
+  required Map<String, String> classRenames,
+}) {
+  var moved = 0;
+  for (final symbol in sourceSymbols) {
+    final oldFqcn = symbol.fqcn;
+    final newClassFqcn = classRenames[oldFqcn] ?? oldFqcn;
+    final newClassName = newClassFqcn.split('.').last;
+    final newPackage = packageRenames[symbol.packageName] ?? symbol.packageName;
+    final sourceRoot =
+        symbol.file.path.contains('/kotlin/') ? 'kotlin' : 'java';
+    final target = File(p.joinAll([
+      mainDir.path,
+      sourceRoot,
+      ...newPackage.split('.'),
+      '$newClassName${symbol.extension}',
+    ]));
+    if (target.path == symbol.file.path) continue;
+    target.parent.createSync(recursive: true);
+    symbol.file.renameSync(target.path);
+    moved++;
+  }
+  return moved;
 }
 
 List<_ComponentSpec> _buildComponentSpecs(AndroidNoiseConfig config) {
@@ -835,6 +1540,420 @@ File _resolveConfigFile(String projectPath) {
   return File(p.join(Directory.current.path, _configFileName));
 }
 
+String? _readAndroidPackage(String source) {
+  return RegExp(
+    r'^\s*package\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*;?',
+    multiLine: true,
+  ).firstMatch(source)?.group(1);
+}
+
+String? _readAndroidClassName(String source, String extension) {
+  final publicMatch = RegExp(
+    r'\bpublic\s+(?:final\s+|open\s+|abstract\s+|data\s+|sealed\s+)?(?:class|interface|enum|object)\s+([A-Za-z_][A-Za-z0-9_]*)',
+  ).firstMatch(source);
+  if (publicMatch != null) return publicMatch.group(1);
+  return RegExp(
+    r'\b(?:class|interface|enum|object)\s+([A-Za-z_][A-Za-z0-9_]*)',
+  ).firstMatch(source)?.group(1);
+}
+
+String _rewritePackageDeclarations(
+  String source,
+  Map<String, String> packageRenames,
+) {
+  return source.replaceAllMapped(
+    RegExp(
+      r'^(\s*package\s+)([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)(\s*;?)',
+      multiLine: true,
+    ),
+    (match) => '${match.group(1)}'
+        '${packageRenames[match.group(2)] ?? match.group(2)}'
+        '${match.group(3)}',
+  );
+}
+
+String _rewriteImportsAndTypeNames(
+  String source,
+  Map<String, String> packageRenames,
+  Map<String, String> classRenames,
+  List<MapEntry<String, String>> classRenameEntries, {
+  bool rewriteDeclarations = true,
+}) {
+  var updated = source.replaceAllMapped(
+    RegExp(
+      r'^(\s*import\s+)([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)(\s*;?)',
+      multiLine: true,
+    ),
+    (match) {
+      final oldImport = match.group(2)!;
+      final packageName = oldImport
+          .split('.')
+          .sublist(0, oldImport.split('.').length - 1)
+          .join('.');
+      final className = oldImport.split('.').last;
+      final renamedClass = classRenames[oldImport];
+      if (renamedClass != null) {
+        final newPackage = packageRenames[packageName] ??
+            renamedClass
+                .split('.')
+                .sublist(0, renamedClass.split('.').length - 1)
+                .join('.');
+        return '${match.group(1)}$newPackage.${renamedClass.split('.').last}${match.group(3)}';
+      }
+      final renamedPackage = packageRenames[oldImport];
+      if (renamedPackage != null) {
+        return '${match.group(1)}$renamedPackage${match.group(3)}';
+      }
+      if (packageRenames.containsKey(packageName)) {
+        return '${match.group(1)}${packageRenames[packageName]}.$className${match.group(3)}';
+      }
+      return match.group(0)!;
+    },
+  );
+
+  updated = _rewriteCodeOutsideStrings(updated, (segment) {
+    var rewritten = segment;
+    for (final entry in classRenameEntries) {
+      final oldClassName = entry.key.split('.').last;
+      if (!rewritten.contains(entry.key) && !rewritten.contains(oldClassName)) {
+        continue;
+      }
+      final oldFqcn = RegExp.escape(entry.key);
+      rewritten = rewritten.replaceAllMapped(
+        RegExp('(^|[^A-Za-z0-9_])$oldFqcn(?![A-Za-z0-9_])'),
+        (match) => '${match.group(1)}${entry.value}',
+      );
+      if (rewriteDeclarations) {
+        rewritten = rewritten.replaceAllMapped(
+          RegExp(r'\b(class|interface|enum|object)\s+' +
+              RegExp.escape(entry.key.split('.').last) +
+              r'\b'),
+          (match) => '${match.group(1)} ${entry.value.split('.').last}',
+        );
+        rewritten = _rewriteJavaConstructors(
+          rewritten,
+          oldClassName: entry.key.split('.').last,
+          newClassName: entry.value.split('.').last,
+        );
+      }
+      rewritten = _rewriteSimpleClassReferences(
+        rewritten,
+        oldClassName: entry.key.split('.').last,
+        newClassName: entry.value.split('.').last,
+      );
+    }
+    return rewritten;
+  });
+  return updated;
+}
+
+String _rewriteSimpleClassReferences(
+  String source, {
+  required String oldClassName,
+  required String newClassName,
+}) {
+  if (oldClassName == newClassName) return source;
+  return source.replaceAllMapped(
+    RegExp(r'\b' + RegExp.escape(oldClassName) + r'\b'),
+    (_) => newClassName,
+  );
+}
+
+String _rewriteJavaConstructors(
+  String source, {
+  required String oldClassName,
+  required String newClassName,
+}) {
+  if (oldClassName == newClassName) return source;
+  final constructorPattern = RegExp(
+    r'(^|[;\{\}\n]\s*)((?:public|protected|private)\s+)?' +
+        RegExp.escape(oldClassName) +
+        r'(\s*\()',
+  );
+  return source.replaceAllMapped(
+    constructorPattern,
+    (match) =>
+        '${match.group(1)}${match.group(2) ?? ''}$newClassName${match.group(3)}',
+  );
+}
+
+String _rewriteResourceReferencesInCode(
+  String source,
+  Map<String, String> resourceRenames,
+) {
+  return source.replaceAllMapped(
+    RegExp(r'\bR\.([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b'),
+    (match) {
+      final key = '${match.group(1)}/${match.group(2)}';
+      final renamed = resourceRenames[key];
+      if (renamed == null) return match.group(0)!;
+      return 'R.${match.group(1)}.${renamed.split('/').last}';
+    },
+  );
+}
+
+String _rewriteReflectionReferences({
+  required String source,
+  required Map<String, String> classRenames,
+  required bool strict,
+  required List<Map<String, String>> reflectionRewrites,
+}) {
+  var updated = source;
+  String replacementFor(String oldName) => classRenames[oldName] ?? oldName;
+  void record(String api, String oldName, String newName) {
+    if (oldName == newName) return;
+    reflectionRewrites.add({
+      'api': api,
+      'from': oldName,
+      'to': newName,
+    });
+  }
+
+  updated = updated.replaceAllMapped(
+    RegExp(r'(Class\.forName\s*\(\s*")([^"]+)(")'),
+    (match) {
+      final oldName = match.group(2)!;
+      final newName = replacementFor(oldName);
+      record('Class.forName', oldName, newName);
+      return '${match.group(1)}$newName${match.group(3)}';
+    },
+  );
+  updated = updated.replaceAllMapped(
+    RegExp(
+        r'((?:getClassLoader\(\)|[A-Za-z_][A-Za-z0-9_]*ClassLoader|classLoader)\.loadClass\s*\(\s*")([^"]+)(")'),
+    (match) {
+      final oldName = match.group(2)!;
+      final newName = replacementFor(oldName);
+      record('ClassLoader.loadClass', oldName, newName);
+      return '${match.group(1)}$newName${match.group(3)}';
+    },
+  );
+  updated = updated.replaceAllMapped(
+    RegExp(r'(\.setClassName\s*\(\s*[^,]+,\s*")([^"]+)(")'),
+    (match) {
+      final oldName = match.group(2)!;
+      final newName = replacementFor(oldName);
+      record('Intent.setClassName', oldName, newName);
+      return '${match.group(1)}$newName${match.group(3)}';
+    },
+  );
+  updated = updated.replaceAllMapped(
+    RegExp(r'(ComponentName\s*\(\s*[^,]+,\s*")([^"]+)(")'),
+    (match) {
+      final oldName = match.group(2)!;
+      final newName = replacementFor(oldName);
+      record('ComponentName', oldName, newName);
+      return '${match.group(1)}$newName${match.group(3)}';
+    },
+  );
+
+  if (!strict) {
+    for (final entry in classRenames.entries) {
+      updated = updated.replaceAll('"${entry.key}"', '"${entry.value}"');
+    }
+  }
+  return updated;
+}
+
+String _rewriteCodeOutsideStrings(
+  String source,
+  String Function(String segment) rewrite,
+) {
+  final buffer = StringBuffer();
+  final segment = StringBuffer();
+  var i = 0;
+  var inDouble = false;
+  var inSingle = false;
+  var inLineComment = false;
+  var inBlockComment = false;
+  var escaped = false;
+
+  void flushSegment() {
+    if (segment.isNotEmpty) {
+      buffer.write(rewrite(segment.toString()));
+      segment.clear();
+    }
+  }
+
+  while (i < source.length) {
+    final char = source[i];
+    final next = i + 1 < source.length ? source[i + 1] : '';
+
+    if (inLineComment) {
+      buffer.write(char);
+      if (char == '\n') inLineComment = false;
+      i++;
+      continue;
+    }
+    if (inBlockComment) {
+      buffer.write(char);
+      if (char == '*' && next == '/') {
+        buffer.write(next);
+        inBlockComment = false;
+        i += 2;
+      } else {
+        i++;
+      }
+      continue;
+    }
+    if (inDouble || inSingle) {
+      buffer.write(char);
+      if (escaped) {
+        escaped = false;
+      } else if (char == r'\') {
+        escaped = true;
+      } else if (inDouble && char == '"') {
+        inDouble = false;
+      } else if (inSingle && char == "'") {
+        inSingle = false;
+      }
+      i++;
+      continue;
+    }
+
+    if (char == '/' && next == '/') {
+      flushSegment();
+      buffer.write(char);
+      buffer.write(next);
+      inLineComment = true;
+      i += 2;
+      continue;
+    }
+    if (char == '/' && next == '*') {
+      flushSegment();
+      buffer.write(char);
+      buffer.write(next);
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+    if (char == '"') {
+      flushSegment();
+      buffer.write(char);
+      inDouble = true;
+      i++;
+      continue;
+    }
+    if (char == "'") {
+      flushSegment();
+      buffer.write(char);
+      inSingle = true;
+      i++;
+      continue;
+    }
+
+    segment.write(char);
+    i++;
+  }
+  flushSegment();
+  return buffer.toString();
+}
+
+List<String> _findConcatenatedReflectionWarnings(String source) {
+  final warnings = <String>[];
+  final pattern = RegExp(
+      r'(Class\.forName|loadClass|setClassName|ComponentName)\s*\([^)]*"[^"]*"\s*\+');
+  for (final match in pattern.allMatches(source)) {
+    warnings.add(
+        'concatenated reflection string was not rewritten: ${match.group(1)}');
+  }
+  return warnings;
+}
+
+String _rewriteXmlOutsideComments(
+  String source,
+  String Function(String segment) rewrite,
+) {
+  final buffer = StringBuffer();
+  var index = 0;
+  final commentPattern = RegExp(r'<!--[\s\S]*?-->');
+  for (final match in commentPattern.allMatches(source)) {
+    buffer.write(rewrite(source.substring(index, match.start)));
+    buffer.write(match.group(0));
+    index = match.end;
+  }
+  buffer.write(rewrite(source.substring(index)));
+  return buffer.toString();
+}
+
+String _rewriteXmlSegment(
+  String segment, {
+  required List<MapEntry<String, String>> classRenameEntries,
+  required Map<String, String> resourceRenames,
+}) {
+  var updated = segment.replaceAllMapped(
+    RegExp(r'(@|\?)([A-Za-z_][A-Za-z0-9_]*)/([A-Za-z_][A-Za-z0-9_]*)'),
+    (match) {
+      final key = '${match.group(2)}/${match.group(3)}';
+      final renamed = resourceRenames[key];
+      if (renamed == null) return match.group(0)!;
+      return '${match.group(1)}${match.group(2)}/${renamed.split('/').last}';
+    },
+  );
+  for (final entry in classRenameEntries) {
+    if (!updated.contains(entry.key)) continue;
+    updated = updated.replaceAllMapped(
+      RegExp('([<"\\s=])${RegExp.escape(entry.key)}([>"\\s/])'),
+      (match) => '${match.group(1)}${entry.value}${match.group(2)}',
+    );
+  }
+  return updated;
+}
+
+List<MapEntry<String, String>> _sortedClassRenameEntries(
+  Map<String, String> classRenames,
+) {
+  return classRenames.entries.toList()
+    ..sort((a, b) => b.key.length.compareTo(a.key.length));
+}
+
+String _toPackageSegment(String value) {
+  final raw = value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]+'), '_');
+  final normalized =
+      raw.replaceAll(RegExp(r'_+'), '_').replaceAll(RegExp(r'^_|_$'), '');
+  if (normalized.isEmpty) return 'profile';
+  if (RegExp(r'^[0-9]').hasMatch(normalized)) return 'p_$normalized';
+  return normalized;
+}
+
+String _toAndroidResourceName(String value) {
+  final raw = value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_]+'), '_');
+  var normalized =
+      raw.replaceAll(RegExp(r'_+'), '_').replaceAll(RegExp(r'^_|_$'), '');
+  if (normalized.isEmpty) normalized = 'profile_item';
+  if (RegExp(r'^[0-9]').hasMatch(normalized)) normalized = 'r_$normalized';
+  return normalized;
+}
+
+bool _matchesAnyPackage(String packageName, List<String> patterns) {
+  return patterns.any((pattern) {
+    if (pattern.endsWith('.*')) {
+      return packageName == pattern.substring(0, pattern.length - 2) ||
+          packageName.startsWith(pattern.substring(0, pattern.length - 1));
+    }
+    return _matchesGlob(packageName, pattern);
+  });
+}
+
+bool _matchesAnyResource(String type, String name, List<String> patterns) {
+  return patterns.any((pattern) {
+    if (pattern.contains('/')) return _matchesGlob('$type/$name', pattern);
+    return _matchesGlob(name, pattern);
+  });
+}
+
+bool _matchesAnyGlob(String value, List<String> patterns) {
+  return patterns.any((pattern) => _matchesGlob(value, pattern));
+}
+
+bool _matchesGlob(String value, String pattern) {
+  final escaped = RegExp.escape(pattern)
+      .replaceAll(r'\*\*', '.*')
+      .replaceAll(r'\*', '[^/]*')
+      .replaceAll(r'\?', '.');
+  return RegExp('^$escaped\$').hasMatch(value);
+}
+
 int _readOptionalCount(
     Map<String, dynamic> json, String key, int defaultValue) {
   final value = json[key];
@@ -861,6 +1980,28 @@ List<String> _readTemplateList(
     }
     return item.trim();
   }).toList();
+}
+
+List<String> _readMergedTemplateList(
+  Map<String, dynamic> json,
+  String key,
+  List<String> defaults,
+) {
+  final merged = <String>[...defaults];
+  final value = json[key];
+  if (value == null) return merged;
+  if (value is! List) {
+    throw StateError(
+        'androidNoise.deepObfuscation.$key must be a string array.');
+  }
+  for (final item in value) {
+    if (item is! String || item.trim().isEmpty) {
+      throw StateError(
+          'androidNoise.deepObfuscation.$key must be a string array.');
+    }
+    if (!merged.contains(item.trim())) merged.add(item.trim());
+  }
+  return merged;
 }
 
 List<AndroidXmlResourceTemplate> _readXmlResourceTemplates(

@@ -340,6 +340,70 @@
       "xml": true,
       "images": true
     },
+    "deepObfuscation": {
+      "enabled": true,
+      "skipFiles": [
+        "**/GeneratedPluginRegistrant.java",
+        "**/GeneratedPluginRegistrant.kt",
+        "**/MainActivity.java",
+        "**/MainActivity.kt"
+      ],
+      "skipClasses": [
+        "GeneratedPluginRegistrant",
+        "MainActivity"
+      ],
+      "skipPackages": [],
+      "skipResources": [
+        "ic_launcher*",
+        "mipmap/ic_launcher*",
+        "logo*"
+      ],
+      "packageTemplates": [
+        "account.{{word}}",
+        "session.{{word}}",
+        "profile.{{word}}",
+        "payment.{{word}}",
+        "witchs_{{word}}",
+        "room_{{word}}",
+        "{{word}}_pp"
+      ],
+      "classTemplates": [
+        "Session{{className}}",
+        "Account{{className}}",
+        "Profile{{className}}",
+        "Payment{{className}}",
+        "PyList{{className}}",
+        "Section{{className}}Impl",
+        "Porto{{className}}Acty",
+        "His{{className}}",
+        "Info{{className}}",
+        "Msg{{className}}"
+      ],
+      "resourceTemplates": [
+        "profile_{{name}}",
+        "session_{{name}}",
+        "account_{{name}}",
+        "payment_{{name}}",
+        "cache_{{name}}",
+        "route_{{name}}",
+        "channel_{{name}}",
+        "model_{{name}}",
+        "node_{{name}}",
+        "room_{{name}}"
+      ],
+      "semanticWords": [
+        "profile",
+        "session",
+        "account",
+        "payment",
+        "cache",
+        "route"
+      ],
+      "reflectionRewrite": {
+        "enabled": true,
+        "strict": true
+      }
+    },
     "resourceTemplates": {
       "drawableXml": [
         {
