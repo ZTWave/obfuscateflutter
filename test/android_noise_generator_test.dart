@@ -240,6 +240,13 @@ void main() {
                   '<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="1dp" android:layout_height="1dp" android:background="@drawable/{{drawableName}}" />'
             }
           ],
+          'stringValues': [
+            {
+              'name': 'checkout_title',
+              'value': 'Checkout {{resourceName}} {{index}}'
+            },
+            {'name': 'profile_status', 'value': 'Profile route {{packageName}}'}
+          ],
         },
       },
     }));
@@ -268,6 +275,35 @@ void main() {
     ));
     expect(drawable.readAsStringSync(), contains('#112233'));
     expect(layout.readAsStringSync(), contains('@drawable/billing_panel'));
+    final strings = File(p.join(
+      projectDir.path,
+      'android',
+      'app',
+      'src',
+      'main',
+      'res',
+      'values',
+      'strings.xml',
+    ));
+    expect(strings.existsSync(), isTrue);
+    final stringsSource = strings.readAsStringSync();
+    expect(stringsSource, contains('<string name="checkout_title">'));
+    expect(stringsSource, contains('Checkout checkout_title 0'));
+    expect(stringsSource, contains('<string name="profile_status">'));
+    expect(
+      stringsSource,
+      contains('Profile route com.example.sample.platform'),
+    );
+
+    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
+          (file) => p.basename(file.path).startsWith('android_noise_mapping_'),
+        );
+    final mapping =
+        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    expect(
+      mapping['generated_resources'],
+      contains('src/main/res/values/strings.xml'),
+    );
   });
 
   test('android noise generation selects java source from json template lists',

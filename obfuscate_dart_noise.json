@@ -500,6 +500,216 @@
           "name": "media_progress_panel",
           "body": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<LinearLayout xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    android:layout_width=\"match_parent\"\n    android:layout_height=\"wrap_content\"\n    android:orientation=\"vertical\"\n    android:padding=\"8dp\"\n    android:background=\"@drawable/status_card_panel\">\n    <TextView android:id=\"@+id/media_title_{{index}}\" android:text=\"Media\" android:layout_width=\"match_parent\" android:layout_height=\"wrap_content\" android:textSize=\"13sp\" android:textColor=\"#0F172A\" />\n    <ProgressBar android:id=\"@+id/media_progress_{{index}}\" style=\"?android:attr/progressBarStyleHorizontal\" android:progressDrawable=\"@drawable/media_progress_track\" android:layout_width=\"match_parent\" android:layout_height=\"6dp\" android:layout_marginTop=\"6dp\" />\n</LinearLayout>\n"
         }
+      ],
+      "stringValues": [
+        {
+          "name": "session_title",
+          "value": "Session {{index}}"
+        },
+        {
+          "name": "profile_state",
+          "value": "Profile route {{packageName}}"
+        },
+        {
+          "name": "payment_status_label",
+          "value": "Payment state {{resourceName}}"
+        },
+        {
+          "name": "cache_sync_message",
+          "value": "Cache sync {{index}}"
+        },
+        {
+          "name": "content_channel_label",
+          "value": "Content channel {{namespace}}"
+        },
+        {
+          "name": "usr_profile_name",
+          "value": "usr_profile_name_{{resourceName}}"
+        },
+        {
+          "name": "post_content",
+          "value": "post_content_{{resourceName}}"
+        },
+        {
+          "name": "msg_status_online",
+          "value": "msg_status_online"
+        },
+        {
+          "name": "set_privacy_mode",
+          "value": "set_privacy_mode"
+        },
+        {
+          "name": "like_count",
+          "value": "like_count_{{index}}"
+        },
+        {
+          "name": "comment_text",
+          "value": "comment_text_{{index}}"
+        },
+        {
+          "name": "share_link",
+          "value": "share_link"
+        },
+        {
+          "name": "view_count",
+          "value": "view_count"
+        },
+        {
+          "name": "user_avatar_img",
+          "value": "user_avatar_img"
+        },
+        {
+          "name": "sys_notification",
+          "value": "sys_notification"
+        },
+        {
+          "name": "cache_data",
+          "value": "cache_data"
+        },
+        {
+          "name": "auth_state",
+          "value": "auth_state"
+        },
+        {
+          "name": "logout_confirm",
+          "value": "logout_confirm"
+        },
+        {
+          "name": "refresh_data",
+          "value": "refresh_data"
+        },
+        {
+          "name": "user_nickname_cn",
+          "value": "user_nickname_cn_{{packageName}}"
+        },
+        {
+          "name": "post_title_en",
+          "value": "post_title_en"
+        },
+        {
+          "name": "setting_theme",
+          "value": "setting_theme"
+        },
+        {
+          "name": "privacy_level",
+          "value": "privacy_level"
+        },
+        {
+          "name": "tp_load",
+          "value": "trace.Repo.load"
+        },
+        {
+          "name": "cache_ready",
+          "value": "cache payload ready"
+        },
+        {
+          "name": "usr_home_tab",
+          "value": "usr_home_tab"
+        },
+        {
+          "name": "post_like_btn",
+          "value": "post_like_btn"
+        },
+        {
+          "name": "msg_send_btn",
+          "value": "msg_send_btn"
+        },
+        {
+          "name": "setting_sound",
+          "value": "setting_sound"
+        },
+        {
+          "name": "privacy_visible",
+          "value": "privacy_visible"
+        },
+        {
+          "name": "user_gender",
+          "value": "user_gender"
+        },
+        {
+          "name": "post_image_src",
+          "value": "post_image_src"
+        },
+        {
+          "name": "msg_read_status",
+          "value": "msg_read_status_{{packageName}}"
+        },
+        {
+          "name": "user_nickname_cn",
+          "value": "用户昵称"
+        },
+        {
+          "name": "post_content",
+          "value": "发布内容"
+        },
+        {
+          "name": "msg_status_online",
+          "value": "在线状态"
+        },
+        {
+          "name": "set_privacy_mode",
+          "value": "隐私模式"
+        },
+        {
+          "name": "like_count",
+          "value": "点赞数%d"
+        },
+        {
+          "name": "comment_text",
+          "value": "评论文本"
+        },
+        {
+          "name": "share_link",
+          "value": "分享链接"
+        },
+        {
+          "name": "view_count",
+          "value": "浏览数"
+        },
+        {
+          "name": "user_avatar_img",
+          "value": "头像图片"
+        },
+        {
+          "name": "sys_notification",
+          "value": "系统通知"
+        },
+        {
+          "name": "debug_flag",
+          "value": "_debug_flag"
+        },
+        {
+          "name": "log_trace",
+          "value": "_log_trace"
+        },
+        {
+          "name": "init_data",
+          "value": "_init_data"
+        },
+        {
+          "name": "load_res",
+          "value": "_load_res"
+        },
+        {
+          "name": "config_key",
+          "value": "通用配置项"
+        },
+        {
+          "name": "net_request_status",
+          "value": "网络请求状态"
+        },
+        {
+          "name": "lcoal_cache_flag",
+          "value": "本地缓存标记"
+        },
+        {
+          "name": "user_login_flag",
+          "value": "用户登录标识"
+        },
+        {
+          "name": "session_timeout",
+          "value": "消息发送记录"
+        }
       ]
     }
   },

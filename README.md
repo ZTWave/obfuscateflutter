@@ -518,6 +518,16 @@ String 模板只能是普通文本，不允许换行、分号、`import`、`part
           "name": "session_marker",
           "body": "<FrameLayout xmlns:android=\"http://schemas.android.com/apk/res/android\" android:layout_width=\"1dp\" android:layout_height=\"1dp\" android:background=\"@drawable/{{drawableName}}\" />"
         }
+      ],
+      "stringValues": [
+        {
+          "name": "session_title",
+          "value": "Session {{index}}"
+        },
+        {
+          "name": "profile_state",
+          "value": "Profile route {{packageName}}"
+        }
       ]
     }
   }
@@ -534,6 +544,7 @@ String 模板只能是普通文本，不允许换行、分号、`import`、`part
 | `androidNoise.stringTemplates` | 生成方法内使用的可读字符串模板。 |
 | `androidNoise.generateResources.xml/images` | 是否生成 XML 和 PNG 资源。 |
 | `androidNoise.resourceTemplates.drawableXml/layoutXml` | XML 资源模板数组，`name` 是不带扩展名的 Android 资源名，`body` 是写入文件的 XML 内容。 |
+| `androidNoise.resourceTemplates.stringValues` | `strings.xml` 字符串模板数组，`name` 是字符串资源名，`value` 支持 `{{packageName}}`、`{{namespace}}`、`{{resourceName}}`、`{{drawableName}}`、`{{index}}`。 |
 | `androidNoise.deepObfuscation.enabled` | 是否开启 Android 全工程深度命名混淆；默认关闭。 |
 | `androidNoise.deepObfuscation.skipFiles/skipClasses/skipPackages/skipResources` | 跳过模板；默认保护 `GeneratedPluginRegistrant`、`MainActivity` 和 launcher 图标。 |
 | `androidNoise.deepObfuscation.packageTemplates/classTemplates/resourceTemplates/semanticWords` | 深度混淆名称模板；使用业务语义词，不生成 `noise/obf` 字段。 |

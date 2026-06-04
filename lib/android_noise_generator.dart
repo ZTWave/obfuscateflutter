@@ -226,6 +226,16 @@ const _defaultLayoutTemplates = [
 ''',
   },
 ];
+const _defaultStringValueTemplates = [
+  {
+    'name': 'session_title',
+    'value': 'Session {{index}}',
+  },
+  {
+    'name': 'profile_state',
+    'value': 'Profile route {{packageName}}',
+  },
+];
 
 void runAndroidNoiseGeneration(String projectPath) {
   final projectDir = Directory(projectPath);
@@ -319,6 +329,7 @@ class AndroidNoiseConfig {
     required this.generateImageResources,
     required this.drawableXmlTemplates,
     required this.layoutXmlTemplates,
+    required this.stringValueTemplates,
     required this.deepObfuscation,
     required this.configSource,
   });
@@ -337,6 +348,7 @@ class AndroidNoiseConfig {
   final bool generateImageResources;
   final List<AndroidXmlResourceTemplate> drawableXmlTemplates;
   final List<AndroidXmlResourceTemplate> layoutXmlTemplates;
+  final List<AndroidStringResourceTemplate> stringValueTemplates;
   final AndroidDeepObfuscationConfig deepObfuscation;
   final String configSource;
 
@@ -423,6 +435,11 @@ class AndroidNoiseConfig {
         'layoutXml',
         _defaultLayoutTemplates,
       ),
+      stringValueTemplates: _readStringResourceTemplates(
+        resourceTemplates,
+        'stringValues',
+        _defaultStringValueTemplates,
+      ),
       deepObfuscation: AndroidDeepObfuscationConfig.fromJson(deepObfuscation),
       configSource: configSource,
     );
@@ -447,6 +464,9 @@ class AndroidNoiseConfig {
           .toList(),
       layoutXmlTemplates: _defaultLayoutTemplates
           .map(AndroidXmlResourceTemplate.fromDefault)
+          .toList(),
+      stringValueTemplates: _defaultStringValueTemplates
+          .map(AndroidStringResourceTemplate.fromDefault)
           .toList(),
       deepObfuscation: AndroidDeepObfuscationConfig.defaults(),
       configSource: configSource,
@@ -478,6 +498,8 @@ class AndroidNoiseConfig {
             drawableXmlTemplates.map((template) => template.toJson()).toList(),
         'layoutXml':
             layoutXmlTemplates.map((template) => template.toJson()).toList(),
+        'stringValues':
+            stringValueTemplates.map((template) => template.toJson()).toList(),
       },
       'deepObfuscation': deepObfuscation.toJson(),
       'configSource': configSource,
@@ -619,6 +641,32 @@ class AndroidXmlResourceTemplate {
     return {
       'name': name,
       'body': body,
+    };
+  }
+}
+
+class AndroidStringResourceTemplate {
+  AndroidStringResourceTemplate({
+    required this.name,
+    required this.value,
+  });
+
+  final String name;
+  final String value;
+
+  factory AndroidStringResourceTemplate.fromDefault(
+    Map<String, String> json,
+  ) {
+    return AndroidStringResourceTemplate(
+      name: json['name']!,
+      value: json['value']!,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'value': value,
     };
   }
 }
@@ -1433,6 +1481,33 @@ List<String> _writeXmlResources({
     from: p.dirname(p.dirname(mainDir.path)),
   ));
 
+  if (config.stringValueTemplates.isNotEmpty) {
+    final strings = File(p.join(valuesDir.path, 'strings.xml'));
+    final buffer = StringBuffer()
+      ..writeln('<?xml version="1.0" encoding="utf-8"?>')
+      ..writeln('<resources>');
+    for (var i = 0; i < config.stringValueTemplates.length; i++) {
+      final template = config.stringValueTemplates[i];
+      final value = _renderResourceTemplate(
+        template.value,
+        namespace: namespace,
+        packageName: packageName,
+        resourceName: template.name,
+        drawableName: firstDrawableName,
+        index: i,
+      );
+      buffer.writeln(
+        '    <string name="${template.name}">${_escapeXmlText(value)}</string>',
+      );
+    }
+    buffer.writeln('</resources>');
+    strings.writeAsStringSync(buffer.toString());
+    generated.add(_posixRelative(
+      strings.path,
+      from: p.dirname(p.dirname(mainDir.path)),
+    ));
+  }
+
   for (var i = 0; i < config.layoutXmlTemplates.length; i++) {
     final template = config.layoutXmlTemplates[i];
     final file = File(p.join(layoutDir.path, '${template.name}.xml'));
@@ -2039,6 +2114,41 @@ List<AndroidXmlResourceTemplate> _readXmlResourceTemplates(
   }).toList();
 }
 
+List<AndroidStringResourceTemplate> _readStringResourceTemplates(
+  Map<String, dynamic> json,
+  String key,
+  List<Map<String, String>> defaults,
+) {
+  final value = json[key];
+  if (value == null) {
+    return defaults.map(AndroidStringResourceTemplate.fromDefault).toList();
+  }
+  if (value is! List || value.isEmpty) {
+    throw StateError(
+        'androidNoise.resourceTemplates.$key must be a non-empty array.');
+  }
+  return value.map((item) {
+    if (item is! Map<String, dynamic>) {
+      throw StateError(
+          'androidNoise.resourceTemplates.$key entries must be objects.');
+    }
+    final name = item['name'];
+    final stringValue = item['value'];
+    if (name is! String || !_isAndroidResourceName(name.trim())) {
+      throw StateError(
+          'androidNoise.resourceTemplates.$key.name must be an Android resource name.');
+    }
+    if (stringValue is! String || stringValue.trim().isEmpty) {
+      throw StateError(
+          'androidNoise.resourceTemplates.$key.value must be non-empty.');
+    }
+    return AndroidStringResourceTemplate(
+      name: name.trim(),
+      value: stringValue,
+    );
+  }).toList();
+}
+
 Map<String, List<String>> _readSourceTemplates(Map<String, dynamic> json) {
   final templates = _cloneDefaultSourceTemplates();
   for (final entry in json.entries) {
@@ -2124,6 +2234,15 @@ String _renderResourceTemplate(
       .replaceAll('{{resourceName}}', resourceName)
       .replaceAll('{{drawableName}}', drawableName)
       .replaceAll('{{index}}', index.toString());
+}
+
+String _escapeXmlText(String value) {
+  return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&apos;');
 }
 
 String _renderClassName(List<String> templates, String type, int index) {
