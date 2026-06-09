@@ -5,6 +5,7 @@ import 'package:obfuscateflutter/log.dart';
 import 'package:path/path.dart' as p;
 
 const _configFileName = 'obfuscate_dart_noise.json';
+const _marker = 'obfuscateflutter: ios-noise';
 const _defaultObjectiveCTemplates = [
   'oc_string_table',
   'oc_numeric_fold',
@@ -31,6 +32,22 @@ const _defaultStringTemplates = [
   },
 ];
 final _identifierPattern = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
+
+enum IosLanguage { objectiveC, objectiveCpp, swift }
+
+class IosSourceFile {
+  IosSourceFile({
+    required this.file,
+    required this.relativePath,
+    required this.language,
+    required this.injectable,
+  });
+
+  final File file;
+  final String relativePath;
+  final IosLanguage language;
+  final bool injectable;
+}
 
 class IosNoiseConfig {
   IosNoiseConfig({
@@ -179,6 +196,105 @@ void runIosNoiseObfuscation(String projectPath) {
   throw UnimplementedError('iOS noise obfuscation is not implemented yet.');
 }
 
+List<IosSourceFile> discoverIosSourceFiles(
+  String projectPath,
+  IosNoiseConfig config,
+) {
+  final iosDir = Directory(p.join(projectPath, 'ios'));
+  if (!iosDir.existsSync()) {
+    throw StateError('ios directory not found in $projectPath');
+  }
+
+  final files = iosDir
+      .listSync(recursive: true)
+      .whereType<File>()
+      .map((file) {
+        final relative = p
+            .relative(file.path, from: projectPath)
+            .replaceAll(p.separator, '/');
+        final extension = p.extension(file.path);
+        final language = switch (extension) {
+          '.m' => IosLanguage.objectiveC,
+          '.mm' => IosLanguage.objectiveCpp,
+          '.h' => IosLanguage.objectiveC,
+          '.swift' => IosLanguage.swift,
+          _ => null,
+        };
+        if (language == null || config.shouldSkip(relative)) return null;
+        return IosSourceFile(
+          file: file,
+          relativePath: relative,
+          language: language,
+          injectable: extension != '.h',
+        );
+      })
+      .whereType<IosSourceFile>()
+      .toList()
+    ..sort((a, b) => a.relativePath.compareTo(b.relativePath));
+
+  return files;
+}
+
+String renderIosNoiseTemplate({
+  required IosLanguage language,
+  required String templateId,
+  required String fileName,
+  required String methodName,
+  required int index,
+  required int seed,
+  required IosStringTemplate stringTemplate,
+}) {
+  final text = _renderStringTemplate(
+    stringTemplate.value,
+    fileName: fileName,
+    methodName: methodName,
+    index: index,
+    seed: seed,
+  );
+
+  return switch (templateId) {
+    'oc_string_table' => _marked(templateId, '''
+NSString *obfIosText$index = @"$text";
+NSArray *obfIosList$index = @[obfIosText$index, @"${stringTemplate.id}"];
+NSDictionary *obfIosMap$index = @{@"k": obfIosText$index, @"m": [obfIosList$index firstObject] ?: @""};
+if ([obfIosMap$index count] == 912347) { NSLog(@"%@", obfIosMap$index); }
+'''),
+    'oc_numeric_fold' => _marked(templateId, '''
+NSInteger obfIosSeed$index = $seed;
+obfIosSeed$index = ((obfIosSeed$index << 2) ^ ${seed + index}) & 0x7fffffff;
+if (obfIosSeed$index == -1) { NSLog(@"%ld", (long)obfIosSeed$index); }
+'''),
+    'oc_guarded_branch' => _marked(templateId, '''
+NSInteger obfIosGuard$index = $seed + $index;
+if (obfIosGuard$index >= 0) {
+  obfIosGuard$index = (obfIosGuard$index * 31) % 9973;
+} else {
+  obfIosGuard$index = 0;
+}
+'''),
+    'swift_string_table' => _marked(templateId, '''
+let obfIosText$index = "$text"
+let obfIosList$index = [obfIosText$index, "${stringTemplate.id}"]
+let obfIosMap$index = ["k": obfIosText$index, "m": obfIosList$index.first ?? ""]
+if obfIosMap$index.count == 912347 { print(obfIosMap$index) }
+'''),
+    'swift_numeric_fold' => _marked(templateId, '''
+var obfIosSeed$index = $seed
+obfIosSeed$index = ((obfIosSeed$index << 2) ^ ${seed + index}) & 0x7fffffff
+if obfIosSeed$index == -1 { print(obfIosSeed$index) }
+'''),
+    'swift_guarded_branch' => _marked(templateId, '''
+var obfIosGuard$index = $seed + $index
+if obfIosGuard$index >= 0 {
+  obfIosGuard$index = (obfIosGuard$index * 31) % 9973
+} else {
+  obfIosGuard$index = 0
+}
+'''),
+    _ => throw StateError('Unsupported iOS template: $templateId'),
+  };
+}
+
 File _resolveConfigFile(String projectPath) {
   final projectConfig = File(p.join(projectPath, _configFileName));
   if (projectConfig.existsSync()) return projectConfig;
@@ -275,4 +391,29 @@ bool _globMatches(String pattern, String path) {
   source = source.replaceAll(r'\*\*', '.*');
   source = source.replaceAll(r'\*', '[^/]*');
   return RegExp('^$source\$').hasMatch(path);
+}
+
+String _marked(String templateId, String body) {
+  final normalized = body.trimRight();
+  return '''
+// $_marker start $templateId
+$normalized
+// $_marker end $templateId
+''';
+}
+
+String _renderStringTemplate(
+  String template, {
+  required String fileName,
+  required String methodName,
+  required int index,
+  required int seed,
+}) {
+  const words = ['signal', 'session', 'profile', 'route', 'cache'];
+  return template
+      .replaceAll('{{fileName}}', fileName)
+      .replaceAll('{{methodName}}', methodName)
+      .replaceAll('{{index}}', '$index')
+      .replaceAll('{{seed}}', '$seed')
+      .replaceAll('{{word}}', words[index % words.length]);
 }

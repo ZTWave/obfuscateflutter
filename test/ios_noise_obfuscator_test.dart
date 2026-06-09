@@ -135,4 +135,82 @@ void main() {
       );
     });
   });
+
+  group('iOS source planning', () {
+    test(
+        'discovers Objective-C and Swift sources while skipping generated paths',
+        () {
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_scan_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+      Directory(p.join(projectDir.path, 'ios', 'Runner'))
+          .createSync(recursive: true);
+      Directory(p.join(projectDir.path, 'ios', 'Pods'))
+          .createSync(recursive: true);
+      File(p.join(projectDir.path, 'ios', 'Runner', 'AppDelegate.m'))
+          .writeAsStringSync('@implementation AppDelegate\n@end\n');
+      File(p.join(projectDir.path, 'ios', 'Runner', 'Scene.swift'))
+          .writeAsStringSync('final class Scene {}\n');
+      File(p.join(projectDir.path, 'ios', 'Runner', 'AppDelegate.h'))
+          .writeAsStringSync('@interface AppDelegate\n@end\n');
+      File(p.join(projectDir.path, 'ios', 'Pods', 'Ignored.m'))
+          .writeAsStringSync('@implementation Ignored\n@end\n');
+
+      final config = IosNoiseConfig.load(projectDir.path);
+      final files = discoverIosSourceFiles(projectDir.path, config);
+
+      expect(files.map((file) => file.relativePath), [
+        'ios/Runner/AppDelegate.h',
+        'ios/Runner/AppDelegate.m',
+        'ios/Runner/Scene.swift',
+      ]);
+      expect(
+          files
+              .singleWhere((file) => file.relativePath.endsWith('.h'))
+              .injectable,
+          isFalse);
+      expect(
+          files
+              .singleWhere((file) => file.relativePath.endsWith('.m'))
+              .language,
+          IosLanguage.objectiveC);
+      expect(
+          files
+              .singleWhere((file) => file.relativePath.endsWith('.swift'))
+              .language,
+          IosLanguage.swift);
+    });
+
+    test('renders language-specific marked templates', () {
+      final swift = renderIosNoiseTemplate(
+        language: IosLanguage.swift,
+        templateId: 'swift_string_table',
+        fileName: 'Scene.swift',
+        methodName: 'viewDidLoad',
+        index: 2,
+        seed: 17,
+        stringTemplate: IosStringTemplate(
+            id: 'trace', value: 'trace.{{fileName}}.{{methodName}}.{{index}}'),
+      );
+      final objc = renderIosNoiseTemplate(
+        language: IosLanguage.objectiveC,
+        templateId: 'oc_numeric_fold',
+        fileName: 'AppDelegate.m',
+        methodName: 'applicationDidFinishLaunching',
+        index: 1,
+        seed: 23,
+        stringTemplate: IosStringTemplate(
+            id: 'trace', value: 'trace.{{fileName}}.{{methodName}}.{{index}}'),
+      );
+
+      expect(swift,
+          contains('// obfuscateflutter: ios-noise start swift_string_table'));
+      expect(swift, contains('let obfIosText2'));
+      expect(swift, contains('trace.Scene.swift.viewDidLoad.2'));
+      expect(objc,
+          contains('// obfuscateflutter: ios-noise start oc_numeric_fold'));
+      expect(objc, contains('NSInteger obfIosSeed1'));
+    });
+  });
 }
