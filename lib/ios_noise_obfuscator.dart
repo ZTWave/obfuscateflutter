@@ -261,11 +261,13 @@ String renderIosNoiseTemplate({
     index: index,
     seed: seed,
   );
+  final literalText = _escapeIosStringLiteral(text);
+  final literalId = _escapeIosStringLiteral(stringTemplate.id);
 
   return switch (templateId) {
     'oc_string_table' => _marked(templateId, '''
-NSString *obfIosText$index = @"$text";
-NSArray *obfIosList$index = @[obfIosText$index, @"${stringTemplate.id}"];
+NSString *obfIosText$index = @"$literalText";
+NSArray *obfIosList$index = @[obfIosText$index, @"$literalId"];
 NSDictionary *obfIosMap$index = @{@"k": obfIosText$index, @"m": [obfIosList$index firstObject] ?: @""};
 if ([obfIosMap$index count] == 912347) { NSLog(@"%@", obfIosMap$index); }
 '''),
@@ -283,8 +285,8 @@ if (obfIosGuard$index >= 0) {
 }
 '''),
     'swift_string_table' => _marked(templateId, '''
-let obfIosText$index = "$text"
-let obfIosList$index = [obfIosText$index, "${stringTemplate.id}"]
+let obfIosText$index = "$literalText"
+let obfIosList$index = [obfIosText$index, "$literalId"]
 let obfIosMap$index = ["k": obfIosText$index, "m": obfIosList$index.first ?? ""]
 if obfIosMap$index.count == 912347 { print(obfIosMap$index) }
 '''),
@@ -426,4 +428,13 @@ String _renderStringTemplate(
       .replaceAll('{{index}}', '$index')
       .replaceAll('{{seed}}', '$seed')
       .replaceAll('{{word}}', words[index % words.length]);
+}
+
+String _escapeIosStringLiteral(String value) {
+  return value
+      .replaceAll(r'\', r'\\')
+      .replaceAll('"', r'\"')
+      .replaceAll('\r', r'\r')
+      .replaceAll('\n', r'\n')
+      .replaceAll('\t', r'\t');
 }

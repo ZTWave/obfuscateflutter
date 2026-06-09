@@ -233,6 +233,54 @@ void main() {
       expect(objc, contains('NSInteger obfIosSeed1'));
     });
 
+    test('escapes Swift string literals in rendered templates', () {
+      final swift = renderIosNoiseTemplate(
+        language: IosLanguage.swift,
+        templateId: 'swift_string_table',
+        fileName: r'Scene\"Name.swift',
+        methodName: 'view"Did\\Load\tCarriage\r',
+        index: 4,
+        seed: 41,
+        stringTemplate: IosStringTemplate(
+          id: r'trace\"id',
+          value: r'trace "{{fileName}}" \ {{methodName}}',
+        ),
+      );
+
+      expect(
+        swift,
+        contains(
+          r'let obfIosText4 = "trace \"Scene\\\"Name.swift\" \\ view\"Did\\Load\tCarriage\r"',
+        ),
+      );
+      expect(
+          swift, contains(r'let obfIosList4 = [obfIosText4, "trace\\\"id"]'));
+    });
+
+    test('escapes Objective-C string literals in rendered templates', () {
+      final objc = renderIosNoiseTemplate(
+        language: IosLanguage.objectiveC,
+        templateId: 'oc_string_table',
+        fileName: r'App\"Delegate.m',
+        methodName: 'application"Did\\Launch\tCarriage\r',
+        index: 5,
+        seed: 43,
+        stringTemplate: IosStringTemplate(
+          id: r'trace\"id',
+          value: r'trace "{{fileName}}" \ {{methodName}}',
+        ),
+      );
+
+      expect(
+        objc,
+        contains(
+          r'NSString *obfIosText5 = @"trace \"App\\\"Delegate.m\" \\ application\"Did\\Launch\tCarriage\r";',
+        ),
+      );
+      expect(objc,
+          contains(r'NSArray *obfIosList5 = @[obfIosText5, @"trace\\\"id"];'));
+    });
+
     test('rejects unsupported and language-mismatched templates', () {
       final stringTemplate = IosStringTemplate(
         id: 'trace',
