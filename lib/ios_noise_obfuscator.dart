@@ -49,6 +49,42 @@ class IosSourceFile {
   final bool injectable;
 }
 
+class IosAstResult {
+  IosAstResult({
+    required this.command,
+    required this.exitCode,
+    required this.stdout,
+    required this.stderr,
+    required this.targets,
+    required this.warnings,
+  });
+
+  final String command;
+  final int exitCode;
+  final String stdout;
+  final String stderr;
+  final List<IosInsertionTarget> targets;
+  final List<String> warnings;
+}
+
+class IosInsertionTarget {
+  IosInsertionTarget({
+    required this.containerName,
+    required this.methodName,
+    required this.bodyStartOffset,
+    required this.bodyEndOffset,
+    required this.insertionOffset,
+    required this.isStaticLike,
+  });
+
+  final String containerName;
+  final String methodName;
+  final int bodyStartOffset;
+  final int bodyEndOffset;
+  final int insertionOffset;
+  final bool isStaticLike;
+}
+
 class IosNoiseConfig {
   IosNoiseConfig({
     required this.enabled,
@@ -307,6 +343,74 @@ if obfIosGuard$index >= 0 {
   };
 }
 
+Future<bool> iosAstToolsAvailable() async {
+  final clang = await Process.run('xcrun', ['--find', 'clang']);
+  if (clang.exitCode != 0) return false;
+
+  final swiftc = await Process.run('xcrun', ['--find', 'swiftc']);
+  return swiftc.exitCode == 0;
+}
+
+Future<IosAstResult> readIosAstTargets(IosSourceFile sourceFile) async {
+  final args = switch (sourceFile.language) {
+    IosLanguage.objectiveC => [
+        'clang',
+        '-x',
+        'objective-c',
+        '-fsyntax-only',
+        ...await _clangSdkArgs(),
+        '-Xclang',
+        '-ast-dump=json',
+        sourceFile.file.path,
+      ],
+    IosLanguage.objectiveCpp => [
+        'clang',
+        '-x',
+        'objective-c++',
+        '-fsyntax-only',
+        ...await _clangSdkArgs(),
+        '-Xclang',
+        '-ast-dump=json',
+        sourceFile.file.path,
+      ],
+    IosLanguage.swift => [
+        'swiftc',
+        '-dump-ast',
+        '-parse',
+        sourceFile.file.path,
+      ],
+  };
+
+  final result = await Process.run('xcrun', args);
+  final stdout = '${result.stdout}';
+  final stderr = '${result.stderr}';
+  final source = sourceFile.file.readAsStringSync();
+  final warnings = <String>[];
+  final targets = <IosInsertionTarget>[];
+
+  if (!sourceFile.injectable) {
+    warnings.add('Source file is not injectable.');
+  } else if (source.contains(_marker)) {
+    warnings.add('Source file already contains iOS noise markers.');
+  } else if (result.exitCode == 0) {
+    targets.addAll(switch (sourceFile.language) {
+      IosLanguage.objectiveC ||
+      IosLanguage.objectiveCpp =>
+        _findObjectiveCInsertionTargets(source),
+      IosLanguage.swift => _findSwiftInsertionTargets(source),
+    });
+  }
+
+  return IosAstResult(
+    command: _shellCommand(['xcrun', ...args]),
+    exitCode: result.exitCode,
+    stdout: stdout,
+    stderr: stderr,
+    targets: targets,
+    warnings: warnings,
+  );
+}
+
 File _resolveConfigFile(String projectPath) {
   final projectConfig = File(p.join(projectPath, _configFileName));
   if (projectConfig.existsSync()) return projectConfig;
@@ -437,4 +541,180 @@ String _escapeIosStringLiteral(String value) {
       .replaceAll('\r', r'\r')
       .replaceAll('\n', r'\n')
       .replaceAll('\t', r'\t');
+}
+
+Future<List<String>> _clangSdkArgs() async {
+  for (final sdk in ['macosx', 'iphoneos']) {
+    final result = await Process.run('xcrun', [
+      '--sdk',
+      sdk,
+      '--show-sdk-path',
+    ]);
+    if (result.exitCode == 0) {
+      final sdkPath = '${result.stdout}'.trim();
+      if (sdkPath.isNotEmpty) return ['-isysroot', sdkPath];
+    }
+  }
+  return const [];
+}
+
+String _shellCommand(List<String> parts) {
+  return parts.map((part) {
+    if (RegExp(r'^[A-Za-z0-9_./:=+-]+$').hasMatch(part)) return part;
+    return "'${part.replaceAll("'", r"'\''")}'";
+  }).join(' ');
+}
+
+List<IosInsertionTarget> _findObjectiveCInsertionTargets(String source) {
+  final targets = <IosInsertionTarget>[];
+  final implementationPattern = RegExp(
+    r'@implementation\s+([A-Za-z_][A-Za-z0-9_]*)',
+    multiLine: true,
+  );
+  final methodPattern = RegExp(
+    r'^[ \t]*([+-])\s*\([^)]*\)\s*([^{;]+)\{',
+    multiLine: true,
+  );
+
+  for (final implementation in implementationPattern.allMatches(source)) {
+    final containerName = implementation.group(1)!;
+    final implementationEnd = source.indexOf('@end', implementation.end);
+    final searchEnd =
+        implementationEnd == -1 ? source.length : implementationEnd;
+    for (final method in methodPattern.allMatches(
+      source.substring(implementation.end, searchEnd),
+    )) {
+      final methodStart = implementation.end + method.start;
+      final bodyStart = source.indexOf('{', methodStart);
+      if (bodyStart == -1 || bodyStart >= searchEnd) continue;
+      final bodyEnd = _findMatchingBrace(source, bodyStart);
+      if (bodyEnd == -1 || bodyEnd > searchEnd) continue;
+      targets.add(IosInsertionTarget(
+        containerName: containerName,
+        methodName: _objectiveCMethodName(method.group(2) ?? ''),
+        bodyStartOffset: bodyStart,
+        bodyEndOffset: bodyEnd,
+        insertionOffset: bodyStart + 1,
+        isStaticLike: method.group(1) == '+',
+      ));
+    }
+  }
+
+  return targets;
+}
+
+String _objectiveCMethodName(String signatureRest) {
+  final selectorParts = RegExp(r'([A-Za-z_][A-Za-z0-9_]*)\s*:')
+      .allMatches(signatureRest)
+      .map((match) => match.group(1)!)
+      .toList();
+  if (selectorParts.isNotEmpty) return '${selectorParts.join(':')}:';
+
+  final name = RegExp(r'([A-Za-z_][A-Za-z0-9_]*)')
+      .firstMatch(signatureRest.trim())
+      ?.group(1);
+  return name ?? '<unknown>';
+}
+
+List<IosInsertionTarget> _findSwiftInsertionTargets(String source) {
+  final targets = <IosInsertionTarget>[];
+  final typePattern = RegExp(
+    r'\b(?:class|struct|enum|actor|extension)\s+([A-Za-z_][A-Za-z0-9_]*)',
+  );
+  final functionPattern = RegExp(
+    r'\b(static\s+|class\s+)?func\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*\{',
+  );
+
+  for (final function in functionPattern.allMatches(source)) {
+    final bodyStart = source.indexOf('{', function.start);
+    if (bodyStart == -1) continue;
+    final bodyEnd = _findMatchingBrace(source, bodyStart);
+    if (bodyEnd == -1) continue;
+    targets.add(IosInsertionTarget(
+      containerName: _swiftContainerName(source, function.start, typePattern),
+      methodName: function.group(2)!,
+      bodyStartOffset: bodyStart,
+      bodyEndOffset: bodyEnd,
+      insertionOffset: bodyStart + 1,
+      isStaticLike: function.group(1) != null,
+    ));
+  }
+
+  return targets;
+}
+
+String _swiftContainerName(String source, int offset, RegExp typePattern) {
+  var containerName = '<global>';
+  for (final match in typePattern.allMatches(source.substring(0, offset))) {
+    containerName = match.group(1)!;
+  }
+  return containerName;
+}
+
+int _findMatchingBrace(String source, int openOffset) {
+  if (openOffset < 0 ||
+      openOffset >= source.length ||
+      source.codeUnitAt(openOffset) != 123) {
+    return -1;
+  }
+
+  var depth = 0;
+  var inLineComment = false;
+  var inBlockComment = false;
+  String? quote;
+  var escaped = false;
+
+  for (var index = openOffset; index < source.length; index++) {
+    final char = source[index];
+    final next = index + 1 < source.length ? source[index + 1] : '';
+
+    if (inLineComment) {
+      if (char == '\n') inLineComment = false;
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char == '*' && next == '/') {
+        inBlockComment = false;
+        index++;
+      }
+      continue;
+    }
+
+    if (quote != null) {
+      if (escaped) {
+        escaped = false;
+      } else if (char == r'\') {
+        escaped = true;
+      } else if (char == quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char == '/' && next == '/') {
+      inLineComment = true;
+      index++;
+      continue;
+    }
+    if (char == '/' && next == '*') {
+      inBlockComment = true;
+      index++;
+      continue;
+    }
+    if (char == '"' || char == "'") {
+      quote = char;
+      continue;
+    }
+    if (char == '{') {
+      depth++;
+      continue;
+    }
+    if (char == '}') {
+      depth--;
+      if (depth == 0) return index;
+    }
+  }
+
+  return -1;
 }

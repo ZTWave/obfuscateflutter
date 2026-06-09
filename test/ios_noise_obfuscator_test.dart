@@ -337,4 +337,80 @@ void main() {
       );
     });
   });
+
+  group('iOS AST targets', () {
+    test('finds Objective-C method body targets through clang AST preflight',
+        () async {
+      if (!await iosAstToolsAvailable()) {
+        return markTestSkipped('xcrun AST tools are unavailable');
+      }
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_ast_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+      Directory(p.join(projectDir.path, 'ios', 'Runner'))
+          .createSync(recursive: true);
+      final file = File(p.join(projectDir.path, 'ios', 'Runner', 'Worker.m'));
+      file.writeAsStringSync('''
+#import <Foundation/Foundation.h>
+@interface Worker : NSObject
+- (NSInteger)sum:(NSInteger)value;
+@end
+@implementation Worker
+- (NSInteger)sum:(NSInteger)value {
+  NSInteger base = value + 1;
+  return base;
+}
+@end
+''');
+
+      final result = await readIosAstTargets(IosSourceFile(
+        file: file,
+        relativePath: 'ios/Runner/Worker.m',
+        language: IosLanguage.objectiveC,
+        injectable: true,
+      ));
+
+      expect(result.command, contains('clang'));
+      expect(result.exitCode, 0);
+      expect(result.targets, isNotEmpty);
+      expect(result.targets.single.methodName, contains('sum'));
+      expect(result.targets.single.insertionOffset, greaterThan(0));
+    });
+
+    test('finds Swift function body targets through swiftc AST preflight',
+        () async {
+      if (!await iosAstToolsAvailable()) {
+        return markTestSkipped('xcrun AST tools are unavailable');
+      }
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_ast_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+      Directory(p.join(projectDir.path, 'ios', 'Runner'))
+          .createSync(recursive: true);
+      final file =
+          File(p.join(projectDir.path, 'ios', 'Runner', 'Scene.swift'));
+      file.writeAsStringSync('''
+final class SceneWorker {
+  func sum(_ value: Int) -> Int {
+    let base = value + 1
+    return base
+  }
+}
+''');
+
+      final result = await readIosAstTargets(IosSourceFile(
+        file: file,
+        relativePath: 'ios/Runner/Scene.swift',
+        language: IosLanguage.swift,
+        injectable: true,
+      ));
+
+      expect(result.command, contains('swiftc'));
+      expect(result.exitCode, 0);
+      expect(result.targets, isNotEmpty);
+      expect(result.targets.single.methodName, 'sum');
+    });
+  });
 }
