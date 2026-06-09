@@ -67,13 +67,13 @@ void main(List<String> arguments) async {
 
   print('flutter project pubspec name is $pubSpaceName');
 
-  _readTaskAndDo(project.path, pubSpaceName);
+  await _readTaskAndDo(project.path, pubSpaceName);
 }
 
-void _readTaskAndDo(
+Future<void> _readTaskAndDo(
   String projectPath,
   String pubSpaceName,
-) {
+) async {
   print(r'''
   please select task to run
   1.修改图片MD5
@@ -98,7 +98,7 @@ void _readTaskAndDo(
       }
     case "2":
       {
-        _proguadImageNameAndClean(projectPath);
+        await _proguadImageNameAndClean(projectPath);
         break;
       }
     case "3":
@@ -140,7 +140,7 @@ void _readTaskAndDo(
       {
         changeToTempDirAndRun(projectPath, pubSpaceName, (projectPathNew) async {
           _runChangeImageMd5(projectPathNew);
-          _proguadImageNameAndClean(projectPathNew);
+          await _proguadImageNameAndClean(projectPathNew);
           _runGenAndroidProguardDict(projectPathNew);
           _runUnifiedObfuscation(projectPathNew);
           print('!!!混淆任务已经完成!!!');
@@ -150,7 +150,7 @@ void _readTaskAndDo(
       }
     default:
       {
-        _readTaskAndDo(projectPath, pubSpaceName);
+        await _readTaskAndDo(projectPath, pubSpaceName);
       }
   }
 }
@@ -161,10 +161,10 @@ _runChangeImageMd5(String projectPath) {
   print('change asserts images name finished!!');
 }
 
-void _proguadImageNameAndClean(String projectPath) {
+Future<void> _proguadImageNameAndClean(String projectPath) async {
   print('proguard images name and clean');
   sleep(Duration(seconds: 3));
-  proguardImages(projectPath);
+  await proguardImages(projectPath);
   print('proguard images name and clean!!');
 }
 

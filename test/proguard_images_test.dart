@@ -6,7 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 void main() {
-  test('proguardImages supports file entries in pubspec assets', () {
+  test('proguardImages supports file entries in pubspec assets', () async {
     final projectDir = Directory.systemTemp.createTempSync('obf_images_test_');
     addTearDown(() {
       if (projectDir.existsSync()) {
@@ -31,7 +31,7 @@ flutter:
     - assets/images/anonymous_avatars.png
 ''');
 
-    proguardImages(projectDir.path);
+    await proguardImages(projectDir.path);
 
     expect(imageFile.existsSync(), isFalse);
     final renamedImages = imageDir

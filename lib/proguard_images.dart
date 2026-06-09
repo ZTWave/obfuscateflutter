@@ -5,15 +5,18 @@ import 'package:obfuscateflutter/random_key.dart';
 import 'package:obfuscateflutter/yaml_helper.dart';
 import 'package:path/path.dart' as p;
 
-void proguardImages(String projectPath) {
+Future<void> proguardImages(String projectPath) async {
   List<ImageProguardData> imageMapper = List.empty(growable: true);
 
   final assetEntries = YamlHelper.getAssetsDir(projectPath);
-  final fileEles = _collectAssetEntities(projectPath, assetEntries);
+
+  // Collect all asset entities and pre-compute entry metadata in one pass.
+  // This avoids repeated FileSystemEntity.typeSync calls later.
+  final collection = _collectAssetCollection(projectPath, assetEntries);
 
   List<File> images = List.empty(growable: true);
   final seenImagePaths = <String>{};
-  for (var element in fileEles) {
+  for (var element in collection.entities) {
     if (element is File) {
       if (imagesExtNames.contains(getFileExtName(element))) {
         if (seenImagePaths.add(element.path)) {
@@ -33,41 +36,46 @@ void proguardImages(String projectPath) {
   final replacements = _buildImageReplacements(
     imageMapper,
     projectPath,
-    assetEntries,
+    collection.entryInfos,
   );
 
   Directory libDir = Directory(p.join(projectPath, "lib"));
   final List<FileSystemEntity> entities =
       libDir.listSync(recursive: true).toList();
 
-  List<FileSystemEntity> allFiles = entities
+  List<File> allFiles = entities
       .where((value) => value is File && getFileExtName(value) == ".dart")
+      .cast<File>()
       .toList();
 
-  for (final element in allFiles) {
-    if (element is! File) {
-      continue;
-    }
-
-    final codeStr = element.readAsStringSync();
-    final modifiedCodeStr =
-        codeStr.replaceAllMapped(_simpleStringLiteralPattern, (match) {
-      final quote = match.group(1)!;
-      final value = match.group(2)!;
-      final replacement = replacements[value];
-      if (replacement == null) {
-        return match.group(0)!;
+  // Process Dart files concurrently in batches to maximize I/O throughput.
+  final concurrency = Platform.numberOfProcessors.clamp(4, 16);
+  for (int i = 0; i < allFiles.length; i += concurrency) {
+    final batch = allFiles.sublist(
+      i,
+      (i + concurrency).clamp(0, allFiles.length),
+    );
+    await Future.wait(batch.map((element) async {
+      final codeStr = await element.readAsString();
+      final modifiedCodeStr =
+          codeStr.replaceAllMapped(_simpleStringLiteralPattern, (match) {
+        final quote = match.group(1)!;
+        final value = match.group(2)!;
+        final replacement = replacements[value];
+        if (replacement == null) {
+          return match.group(0)!;
+        }
+        replacement.image.used = true;
+        return '$quote${replacement.value}$quote';
+      });
+      if (modifiedCodeStr != codeStr) {
+        await element.writeAsString(
+          modifiedCodeStr,
+          flush: true,
+          mode: FileMode.write,
+        );
       }
-      replacement.image.used = true;
-      return '$quote${replacement.value}$quote';
-    });
-    if (modifiedCodeStr != codeStr) {
-      element.writeAsStringSync(
-        modifiedCodeStr,
-        flush: true,
-        mode: FileMode.write,
-      );
-    }
+    }));
   }
 
   _updatePubspecAssets(projectPath, imageMapper);
@@ -88,10 +96,96 @@ void proguardImages(String projectPath) {
 
 final RegExp _simpleStringLiteralPattern = RegExp(r'''(['"])([^'"\r\n]*)\1''');
 
+// ---------------------------------------------------------------------------
+// Pre-computed asset entry metadata.
+// The type-sync is done once per entry during collection and reused across
+// all image→replacement mappings.
+// ---------------------------------------------------------------------------
+class _AssetEntryInfo {
+  final String entryUri; // original pubspec asset URI, e.g. "assets/images"
+  final bool exists;
+  final bool isFile;
+  final bool isDirectory;
+  final String resolvedPath; // normalized absolute path
+
+  _AssetEntryInfo({
+    required this.entryUri,
+    required this.exists,
+    required this.isFile,
+    required this.isDirectory,
+    required this.resolvedPath,
+  });
+}
+
+class _AssetCollection {
+  final List<FileSystemEntity> entities;
+  final List<_AssetEntryInfo> entryInfos;
+
+  _AssetCollection(this.entities, this.entryInfos);
+}
+
+/// Single-pass collection: lists all filesystem entities AND pre-computes
+/// per-entry type metadata so later steps never call typeSync again.
+_AssetCollection _collectAssetCollection(
+  String projectPath,
+  List<String> assetEntries,
+) {
+  final entities = <FileSystemEntity>[];
+  final infos = <_AssetEntryInfo>[];
+  final seenPaths = <String>{};
+
+  for (final String assetEntry in assetEntries) {
+    final String entityPath = p.normalize(p.join(projectPath, assetEntry));
+
+    // typeSync is called exactly once per asset entry.
+    final FileSystemEntityType type;
+    try {
+      type = FileSystemEntity.typeSync(entityPath);
+    } on FileSystemException {
+      infos.add(_AssetEntryInfo(
+        entryUri: assetEntry,
+        exists: false,
+        isFile: false,
+        isDirectory: false,
+        resolvedPath: entityPath,
+      ));
+      print('asset path not found, skip: $assetEntry');
+      continue;
+    }
+
+    final isFile = type == FileSystemEntityType.file;
+    final isDir = type == FileSystemEntityType.directory;
+
+    infos.add(_AssetEntryInfo(
+      entryUri: assetEntry,
+      exists: true,
+      isFile: isFile,
+      isDirectory: isDir,
+      resolvedPath: entityPath,
+    ));
+
+    if (isFile) {
+      if (seenPaths.add(entityPath)) {
+        entities.add(File(entityPath));
+      }
+    } else if (isDir) {
+      for (final entity in Directory(entityPath).listSync(recursive: true)) {
+        if (seenPaths.add(entity.path)) {
+          entities.add(entity);
+        }
+      }
+    } else {
+      print('asset path not found, skip: $assetEntry');
+    }
+  }
+
+  return _AssetCollection(entities, infos);
+}
+
 Map<String, _ImageReplacement> _buildImageReplacements(
   List<ImageProguardData> imageMapper,
   String projectPath,
-  List<String> assetEntries,
+  List<_AssetEntryInfo> entryInfos,
 ) {
   final replacements = <String, _ImageReplacement>{};
 
@@ -104,7 +198,7 @@ Map<String, _ImageReplacement> _buildImageReplacements(
     final posableUsage = _getPathFromAsserts(
       imageItem.path,
       projectPath,
-      assetEntries,
+      entryInfos,
     );
 
     for (final usage in posableUsage) {
@@ -114,39 +208,6 @@ Map<String, _ImageReplacement> _buildImageReplacements(
   }
 
   return replacements;
-}
-
-List<FileSystemEntity> _collectAssetEntities(
-  String projectPath,
-  List<String> assetEntries,
-) {
-  final entities = <FileSystemEntity>[];
-  final seenPaths = <String>{};
-
-  for (final String assetEntry in assetEntries) {
-    final String entityPath = p.normalize(p.join(projectPath, assetEntry));
-    final FileSystemEntityType type = FileSystemEntity.typeSync(entityPath);
-
-    if (type == FileSystemEntityType.file) {
-      if (seenPaths.add(entityPath)) {
-        entities.add(File(entityPath));
-      }
-      continue;
-    }
-
-    if (type == FileSystemEntityType.directory) {
-      for (final entity in Directory(entityPath).listSync(recursive: true)) {
-        if (seenPaths.add(entity.path)) {
-          entities.add(entity);
-        }
-      }
-      continue;
-    }
-
-    print('asset path not found, skip: $assetEntry');
-  }
-
-  return entities;
 }
 
 void _printMapping(List<ImageProguardData> imageMapper) {
@@ -159,11 +220,11 @@ void _printMapping(List<ImageProguardData> imageMapper) {
   }
 }
 
-// imgParentPath is absolute. Returned paths use Flutter asset URI separators.
+// imgParentPath is absolute. Uses pre-computed entryInfos (no typeSync calls).
 List<String> _getPathFromAsserts(
   String imgParentPath,
   String projectPath,
-  List<String> assetEntries,
+  List<_AssetEntryInfo> entryInfos,
 ) {
   final posableImageUsages = <String>[];
   final projectRelativeParent = _toAssetUri(
@@ -173,14 +234,14 @@ List<String> _getPathFromAsserts(
     posableImageUsages.add(projectRelativeParent);
   }
 
-  for (final assetEntry in assetEntries) {
-    final entryPath = p.normalize(p.join(projectPath, assetEntry));
-    final entryType = FileSystemEntity.typeSync(entryPath);
-    if (entryType == FileSystemEntityType.file &&
-        p.equals(p.dirname(entryPath), imgParentPath)) {
-      posableImageUsages.add(_toAssetUri(p.dirname(assetEntry)));
-    } else if (entryType == FileSystemEntityType.directory &&
-        p.isWithin(entryPath, imgParentPath)) {
+  for (final info in entryInfos) {
+    if (!info.exists) continue;
+
+    if (info.isFile &&
+        p.equals(p.dirname(info.resolvedPath), imgParentPath)) {
+      posableImageUsages.add(_toAssetUri(p.dirname(info.entryUri)));
+    } else if (info.isDirectory &&
+        p.isWithin(info.resolvedPath, imgParentPath)) {
       posableImageUsages.add(projectRelativeParent);
     }
   }
