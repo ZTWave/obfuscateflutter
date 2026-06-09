@@ -35,6 +35,11 @@ final _identifierPattern = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
 
 enum IosLanguage { objectiveC, objectiveCpp, swift }
 
+typedef IosProcessRunner = Future<ProcessResult> Function(
+  String executable,
+  List<String> arguments,
+);
+
 class IosSourceFile {
   IosSourceFile({
     required this.file,
@@ -343,12 +348,20 @@ if obfIosGuard$index >= 0 {
   };
 }
 
-Future<bool> iosAstToolsAvailable() async {
-  final clang = await Process.run('xcrun', ['--find', 'clang']);
-  if (clang.exitCode != 0) return false;
+Future<bool> iosAstToolsAvailable() {
+  return iosAstToolsAvailableWithRunner(Process.run);
+}
 
-  final swiftc = await Process.run('xcrun', ['--find', 'swiftc']);
-  return swiftc.exitCode == 0;
+Future<bool> iosAstToolsAvailableWithRunner(IosProcessRunner runner) async {
+  try {
+    final clang = await runner('xcrun', ['--find', 'clang']);
+    if (clang.exitCode != 0) return false;
+
+    final swiftc = await runner('xcrun', ['--find', 'swiftc']);
+    return swiftc.exitCode == 0;
+  } on ProcessException {
+    return false;
+  }
 }
 
 Future<IosAstResult> readIosAstTargets(IosSourceFile sourceFile) async {

@@ -339,6 +339,16 @@ void main() {
   });
 
   group('iOS AST targets', () {
+    test('reports AST tools unavailable when xcrun cannot be launched',
+        () async {
+      final available =
+          await iosAstToolsAvailableWithRunner((executable, arguments) {
+        throw const ProcessException('xcrun', ['--find', 'clang']);
+      });
+
+      expect(available, isFalse);
+    });
+
     test('finds Objective-C method body targets through clang AST preflight',
         () async {
       if (!await iosAstToolsAvailable()) {
