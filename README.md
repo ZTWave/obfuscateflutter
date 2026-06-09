@@ -26,14 +26,11 @@ dart run ./bin/obfuscateflutter.dart \
 2.混淆图片名称并清理
 3.生成Android Proguard混淆字典
 4.混淆项目中所有的String
-5.打包Android Apk
-6.打包Android AAB
-7.打包IOS IPA测试包
-8.恢复项目中已混淆的String
-9.统一混淆（AST方案：文件/目录重命名+混淆文档）
-10.Dart随机代码注入/保留
-11.类内垃圾代码注入
-12.Android项目垃圾代码生成
+5.恢复项目中已混淆的String
+6.统一混淆（AST方案：文件/目录重命名+混淆文档）
+7.Dart随机代码注入/保留
+8.类内垃圾代码/字符串注入
+9.Android项目垃圾代码生成
 x.在临时生成目录中进行执行上述混淆任务并打包
 ```
 
@@ -46,13 +43,10 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 | `3` | 生成 Android Proguard 字典 | 写入 `android/app/dict.txt`，包含 10000 个随机名称。 | 配合 Android `proguard-rules.pro` 的 `-obfuscationdictionary` 等配置使用。 |
 | `4` | 混淆项目中所有 String | 新增或更新 `lib/stren_arg.dart`；将可安全处理的字符串替换为 `des("...")` 调用；自动补 import。 | 隐藏 Dart 源码中的普通字符串字面量。 |
 | `5` | 恢复已混淆 String | 根据 `lib/stren_arg.dart` 中的 `SEP/SEK` 还原 `des("...")` 字符串；无引用后删除 `stren_arg.dart`。 | 回滚功能4产生的字符串加密改动。 |
-| `6` | 打包 Android APK | 执行 `flutter build apk --obfuscate --split-debug-info=./ob_trace --split-per-abi`，并重命名 arm64 APK。 | 生成 release APK。 |
-| `7` | 打包 Android AAB | 执行 `flutter build appbundle --obfuscate --split-debug-info=./ob_trace`，并重命名 AAB。 | 生成商店上传用 AAB。 |
-| `8` | 打包 iOS IPA 测试包 | 执行 `flutter build ipa --release --export-method development`，并重命名 IPA。 | 生成 development 导出方式的 iOS 测试包。 |
-| `9` | 统一混淆 | AST 重写 import/export/part URI，重命名 `lib` 下目录和 Dart 文件，修正 `.g.dart/.freezed.dart` 的 `part of`，输出映射文档。 | 需要可追踪的文件/目录结构混淆。 |
-| `10` | Dart 随机代码注入/保留 | 在 `lib` 下生成随机 Dart 文件；修改 `lib/main.dart` 注入 retain 调用；输出生成映射文档。 | 增加同步可达代码、页面类、方法类和随机 shard 文件。 |
-| `11` | 类内垃圾代码注入 | 向已有类内部插入垃圾成员和轻量 hook；必要时补 import；输出类内注入映射文档。 | 在不额外链接独立工具文件的前提下，让已有业务类产生差异。 |
-| `12` | Android 项目垃圾代码生成 | 在 `android/app/src/main/java` 下生成 Java 四大组件类；生成 XML/PNG 资源；向 Manifest 注册组件；输出映射文档。 | 让 Android 侧无业务调用的组件和资源在打包后保留。 |
+| `6` | 统一混淆 | AST 重写 import/export/part URI，重命名 `lib` 下目录和 Dart 文件，修正 `.g.dart/.freezed.dart` 的 `part of`，输出映射文档。 | 需要可追踪的文件/目录结构混淆。 |
+| `7` | Dart 随机代码注入/保留 | 在 `lib` 下生成随机 Dart 文件；修改 `lib/main.dart` 注入 retain 调用；输出生成映射文档。 | 增加同步可达代码、页面类、方法类和随机 shard 文件。 |
+| `8` | 类内垃圾代码注入 | 向已有类内部插入垃圾成员和轻量 hook；必要时补 import；输出类内注入映射文档。 | 在不额外链接独立工具文件的前提下，让已有业务类产生差异。 |
+| `9` | Android 项目垃圾代码生成 | 在 `android/app/src/main/java` 下生成 Java 四大组件类；生成 XML/PNG 资源；向 Manifest 注册组件；输出映射文档。 | 让 Android 侧无业务调用的组件和资源在打包后保留。 |
 | `x` | 临时目录执行混淆并打包 | 复制项目到临时目录，依次执行图片 MD5、图片名处理、Proguard 字典、统一混淆，再按选择打包，最后把产物复制回原项目。 | 希望原项目源码保持干净，只拿混淆构建产物。 |
 
 ## 功能说明
@@ -111,7 +105,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 - switch case、pattern、const 构造初始化等必须编译期常量的位置。
 - 已经被 `des()` 包裹的字符串。
 
-### 8. 恢复项目中已混淆的 String
+### 5. 恢复项目中已混淆的 String
 
 根据 `lib/stren_arg.dart` 中的参数反向恢复字符串。
 
@@ -121,7 +115,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 - 自动移除不再需要的 `stren_arg.dart` import。
 - 如果项目中已无引用，会删除 `lib/stren_arg.dart`。
 
-### 9. 统一混淆
+### 6. 统一混淆
 
 统一混淆是当前推荐的文件/目录重命名入口。旧的独立“重命名 lib 目录名称”和“重命名所有文件名”菜单已移除。
 
@@ -148,7 +142,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 
 注意：如果项目中存在非标准代码生成关系、字符串拼接 import、或构建脚本硬编码文件路径，需要手动复核。
 
-### 10. Dart 随机代码注入/保留
+### 7. Dart 随机代码注入/保留
 
 该功能会读取配置，在 `lib` 下生成随机 Dart 文件，并在 `lib/main.dart` 中注入一次 `obfDartNoiseRetain()` 调用，避免 release tree shaking 移除生成代码。
 
@@ -167,7 +161,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 - 页面类、普通类、方法列表。
 - snippet 使用次数。
 
-### 11. 类内垃圾代码注入
+### 8. 类内垃圾代码注入
 
 该功能使用 `obfuscate_dart_noise.json` 中的 `classInnerNoise` 配置，扫描已有 Dart 类，把垃圾成员和轻量 hook 插入当前文件和当前类内部。
 
@@ -185,6 +179,9 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 - `.g.dart`、`.freezed.dart`、`.gr.dart` 等生成文件。
 - const 构造、抽象方法、getter/setter、operator、expression-bodied 方法。
 - 无法安全解析或没有可注入 class/method 的文件。
+
+
+### 9. Android项目垃圾代码生成
 
 ## Dart 随机代码注入配置
 
