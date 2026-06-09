@@ -67,5 +67,72 @@ void main() {
         )),
       );
     });
+
+    test('rejects empty Objective-C template group', () {
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_cfg_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+
+      File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+          .writeAsStringSync(jsonEncode({
+        'iosNoise': {
+          'templateGroups': {'objectiveC': <String>[]}
+        }
+      }));
+
+      expect(
+        () => IosNoiseConfig.load(projectDir.path),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('iosNoise.templateGroups.objectiveC'),
+        )),
+      );
+    });
+
+    test('rejects empty Swift template group', () {
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_cfg_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+
+      File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+          .writeAsStringSync(jsonEncode({
+        'iosNoise': {
+          'templateGroups': {'swift': <String>[]}
+        }
+      }));
+
+      expect(
+        () => IosNoiseConfig.load(projectDir.path),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('iosNoise.templateGroups.swift'),
+        )),
+      );
+    });
+
+    test('rejects empty string templates', () {
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_cfg_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+
+      File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+          .writeAsStringSync(jsonEncode({
+        'iosNoise': {'stringTemplates': <String>[]}
+      }));
+
+      expect(
+        () => IosNoiseConfig.load(projectDir.path),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('iosNoise.stringTemplates'),
+        )),
+      );
+    });
   });
 }

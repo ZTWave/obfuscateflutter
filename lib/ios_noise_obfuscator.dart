@@ -220,6 +220,9 @@ List<String> _readTemplateIds(
   List<String> defaults,
 ) {
   final values = _readStringList(json, key, defaults);
+  if (values.isEmpty) {
+    throw StateError('iosNoise.templateGroups.$key must not be empty.');
+  }
   final known = key == 'objectiveC'
       ? _defaultObjectiveCTemplates
       : _defaultSwiftTemplates;
@@ -241,6 +244,9 @@ List<IosStringTemplate> _readStringTemplates(Map<String, dynamic> json) {
   if (value == null) return defaults;
   if (value is! List) {
     throw StateError('iosNoise.stringTemplates must be an array.');
+  }
+  if (value.isEmpty) {
+    throw StateError('iosNoise.stringTemplates must not be empty.');
   }
 
   return value.map((item) {
