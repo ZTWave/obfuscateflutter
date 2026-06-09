@@ -244,6 +244,16 @@ String renderIosNoiseTemplate({
   required int seed,
   required IosStringTemplate stringTemplate,
 }) {
+  final supported = switch (language) {
+    IosLanguage.swift => templateId.startsWith('swift_'),
+    IosLanguage.objectiveC ||
+    IosLanguage.objectiveCpp =>
+      templateId.startsWith('oc_'),
+  };
+  if (!supported) {
+    throw StateError('Unsupported iOS template: $templateId');
+  }
+
   final text = _renderStringTemplate(
     stringTemplate.value,
     fileName: fileName,

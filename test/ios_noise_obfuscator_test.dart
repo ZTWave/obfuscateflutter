@@ -148,6 +148,12 @@ void main() {
           .createSync(recursive: true);
       Directory(p.join(projectDir.path, 'ios', 'Pods'))
           .createSync(recursive: true);
+      Directory(p.join(projectDir.path, 'ios', '.symlinks'))
+          .createSync(recursive: true);
+      Directory(p.join(projectDir.path, 'ios', 'Flutter'))
+          .createSync(recursive: true);
+      Directory(p.join(projectDir.path, 'ios', 'build'))
+          .createSync(recursive: true);
       File(p.join(projectDir.path, 'ios', 'Runner', 'AppDelegate.m'))
           .writeAsStringSync('@implementation AppDelegate\n@end\n');
       File(p.join(projectDir.path, 'ios', 'Runner', 'Scene.swift'))
@@ -156,6 +162,20 @@ void main() {
           .writeAsStringSync('@interface AppDelegate\n@end\n');
       File(p.join(projectDir.path, 'ios', 'Pods', 'Ignored.m'))
           .writeAsStringSync('@implementation Ignored\n@end\n');
+      File(p.join(projectDir.path, 'ios', '.symlinks', 'Ignored.m'))
+          .writeAsStringSync('@implementation Ignored\n@end\n');
+      File(p.join(projectDir.path, 'ios', 'Flutter', 'Ignored.swift'))
+          .writeAsStringSync('final class Ignored {}\n');
+      File(p.join(projectDir.path, 'ios', 'build', 'Ignored.mm'))
+          .writeAsStringSync('@implementation Ignored\n@end\n');
+      File(p.join(
+        projectDir.path,
+        'ios',
+        'Runner',
+        'GeneratedPluginRegistrant.m',
+      )).writeAsStringSync('@implementation GeneratedPluginRegistrant\n@end\n');
+      File(p.join(projectDir.path, 'ios', 'Runner', 'Message.pbobjc.m'))
+          .writeAsStringSync('@implementation Message\n@end\n');
 
       final config = IosNoiseConfig.load(projectDir.path);
       final files = discoverIosSourceFiles(projectDir.path, config);
@@ -211,6 +231,62 @@ void main() {
       expect(objc,
           contains('// obfuscateflutter: ios-noise start oc_numeric_fold'));
       expect(objc, contains('NSInteger obfIosSeed1'));
+    });
+
+    test('rejects unsupported and language-mismatched templates', () {
+      final stringTemplate = IosStringTemplate(
+        id: 'trace',
+        value: 'trace.{{fileName}}.{{methodName}}.{{index}}',
+      );
+
+      expect(
+        () => renderIosNoiseTemplate(
+          language: IosLanguage.swift,
+          templateId: 'oc_numeric_fold',
+          fileName: 'Scene.swift',
+          methodName: 'viewDidLoad',
+          index: 2,
+          seed: 17,
+          stringTemplate: stringTemplate,
+        ),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Unsupported iOS template: oc_numeric_fold',
+        )),
+      );
+      expect(
+        () => renderIosNoiseTemplate(
+          language: IosLanguage.objectiveC,
+          templateId: 'swift_numeric_fold',
+          fileName: 'AppDelegate.m',
+          methodName: 'applicationDidFinishLaunching',
+          index: 1,
+          seed: 23,
+          stringTemplate: stringTemplate,
+        ),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Unsupported iOS template: swift_numeric_fold',
+        )),
+      );
+      expect(
+        () => renderIosNoiseTemplate(
+          language: IosLanguage.swift,
+          templateId: 'swift_unknown',
+          fileName: 'Scene.swift',
+          methodName: 'viewDidLoad',
+          index: 3,
+          seed: 31,
+          stringTemplate: stringTemplate,
+        ),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Unsupported iOS template: swift_unknown',
+        )),
+      );
     });
   });
 }
