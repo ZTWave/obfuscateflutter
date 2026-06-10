@@ -8,6 +8,7 @@ import 'package:obfuscateflutter/dart_noise_obfuscator.dart';
 import 'package:obfuscateflutter/encrypt_string.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
+import 'package:obfuscateflutter/ios_noise_obfuscator.dart';
 import 'package:obfuscateflutter/preflight_checker.dart';
 import 'package:obfuscateflutter/proguard_images.dart';
 import 'package:obfuscateflutter/temp_proj_utils.dart';
@@ -17,7 +18,8 @@ import 'package:yaml/yaml.dart';
 
 void main(List<String> arguments) async {
   print('Hello, Creeper!');
-  print('brfore you start this project change all relative import to start with package import!');
+  print(
+      'brfore you start this project change all relative import to start with package import!');
   print('\n');
   final process = await Process.start(
     'flutter',
@@ -85,6 +87,7 @@ Future<void> _readTaskAndDo(
   7.Dart随机代码注入/保留
   8.类内垃圾代码/字符串注入
   9.Android项目垃圾代码生成
+  10.iOS Object-C/Swift AST 混淆
 
   x.在临时生成目录中进行执行上述混淆任务''');
   print('输入要运行的任务：');
@@ -136,9 +139,15 @@ Future<void> _readTaskAndDo(
         _runAndroidNoiseGeneration(projectPath);
         break;
       }
+    case "10":
+      {
+        await _runIosNoiseObfuscation(projectPath);
+        break;
+      }
     case "x":
       {
-        changeToTempDirAndRun(projectPath, pubSpaceName, (projectPathNew) async {
+        changeToTempDirAndRun(projectPath, pubSpaceName,
+            (projectPathNew) async {
           _runChangeImageMd5(projectPathNew);
           await _proguadImageNameAndClean(projectPathNew);
           _runGenAndroidProguardDict(projectPathNew);
@@ -208,6 +217,12 @@ _runAndroidNoiseGeneration(String projectPath) {
   print('do android noise generation');
   runAndroidNoiseGeneration(projectPath);
   print('do android noise generation finished');
+}
+
+Future<void> _runIosNoiseObfuscation(String projectPath) async {
+  print('do ios ast noise obfuscation');
+  await runIosNoiseObfuscation(projectPath);
+  print('do ios ast noise obfuscation finished');
 }
 
 final parser = ArgParser(allowTrailingOptions: true)

@@ -530,4 +530,21 @@ final class SceneWorker {
       );
     });
   });
+
+  group('default tool config', () {
+    test('tool default config exposes iosNoise defaults', () {
+      final projectDir =
+          Directory.systemTemp.createTempSync('ios_noise_default_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+
+      final config = IosNoiseConfig.load(projectDir.path);
+
+      expect(config.configSource, 'tool_default');
+      expect(config.enabled, isTrue);
+      expect(config.objectiveCTemplates, contains('oc_string_table'));
+      expect(config.swiftTemplates, contains('swift_string_table'));
+    });
+  });
 }

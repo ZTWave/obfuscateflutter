@@ -906,5 +906,42 @@
         "body": "final x = (input + {{salt}}) & 0xFFFF;\nfinal y = (seed + {{salt}}) & 0xFFFF;\nfinal distSq = (x * x + y * y) & 0x3FFFFFFF;\nfinal manhattan = ((x & 0xFF) + (y & 0xFF)) & 0xFFFF;\nfinal mix = ((distSq << {{shift}}) ^ manhattan + {{salt}}) & 0x3fffffff;\nreturn mix;"
       }
     ]
+  },
+  "iosNoise": {
+    "enabled": true,
+    "targetRatio": 0.4,
+    "maxTargetLines": 20000,
+    "maxInsertionsPerFile": 20,
+    "astFallback": "skip",
+    "skipFiles": [
+      "**/Pods/**",
+      "**/.symlinks/**",
+      "**/Flutter/**",
+      "**/GeneratedPluginRegistrant.*",
+      "**/build/**",
+      "**/*.pbobjc.*"
+    ],
+    "templateGroups": {
+      "objectiveC": [
+        "oc_string_table",
+        "oc_numeric_fold",
+        "oc_guarded_branch"
+      ],
+      "swift": [
+        "swift_string_table",
+        "swift_numeric_fold",
+        "swift_guarded_branch"
+      ]
+    },
+    "stringTemplates": [
+      {
+        "id": "session_word_seed",
+        "value": "session.{{word}}.{{seed}}"
+      },
+      {
+        "id": "trace_context",
+        "value": "trace.{{fileName}}.{{methodName}}.{{index}}"
+      }
+    ]
   }
 }

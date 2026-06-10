@@ -1,6 +1,6 @@
 # obfuscateflutter
 
-Flutter 项目混淆辅助工具，支持图片字节扰动、图片资源名清理、Android Proguard 字典生成、Dart 字符串加密、AST 文件/目录重命名、随机 Dart 垃圾文件生成、类内垃圾代码注入、Android 垃圾组件/资源生成，以及常用 release 包构建。
+Flutter 项目混淆辅助工具，支持图片字节扰动、图片资源名清理、Android Proguard 字典生成、Dart 字符串加密、AST 文件/目录重命名、随机 Dart 垃圾文件生成、类内垃圾代码注入、Android 垃圾组件/资源生成、iOS Objective-C/Swift AST 垃圾代码注入，以及常用 release 包构建。
 
 已在 macOS / Windows 测试过基础流程。执行混淆前建议先提交代码或复制一份项目，因为大多数功能会直接修改目标项目文件。
 
@@ -31,6 +31,7 @@ dart run ./bin/obfuscateflutter.dart \
 7.Dart随机代码注入/保留
 8.类内垃圾代码/字符串注入
 9.Android项目垃圾代码生成
+10.iOS Object-C/Swift AST 混淆
 x.在临时生成目录中进行执行上述混淆任务并打包
 ```
 
@@ -47,6 +48,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 | `7` | Dart 随机代码注入/保留 | 在 `lib` 下生成随机 Dart 文件；修改 `lib/main.dart` 注入 retain 调用；输出生成映射文档。 | 增加同步可达代码、页面类、方法类和随机 shard 文件。 |
 | `8` | 类内垃圾代码注入 | 向已有类内部插入垃圾成员和轻量 hook；必要时补 import；输出类内注入映射文档。 | 在不额外链接独立工具文件的前提下，让已有业务类产生差异。 |
 | `9` | Android 项目垃圾代码生成 | 在 `android/app/src/main/java` 下生成 Java 四大组件类；生成 XML/PNG 资源；向 Manifest 注册组件；输出映射文档。 | 让 Android 侧无业务调用的组件和资源在打包后保留。 |
+| `10` | iOS Object-C/Swift AST 混淆 | 使用 `xcrun clang/swiftc` 读取 iOS 原生源码结构，在安全方法体内插入 OC/Swift 模板垃圾代码并输出映射文档。 | 让 iOS 侧 Objective-C/Swift 源码产生可追踪差异，同时保持业务逻辑和公开符号稳定。 |
 | `x` | 临时目录执行混淆并打包 | 复制项目到临时目录，依次执行图片 MD5、图片名处理、Proguard 字典、统一混淆，再按选择打包，最后把产物复制回原项目。 | 希望原项目源码保持干净，只拿混淆构建产物。 |
 
 ## 功能说明
@@ -421,7 +423,7 @@ String 模板只能是普通文本，不允许换行、分号、`import`、`part
 | `run_app_stub` | 保留 | `package:flutter/widgets.dart` | 生成 runApp 方法体，只被引用。 |
 | `debug_log_stub` | 保留 | `package:flutter/widgets.dart` | 生成 debugPrint 方法体，只被引用。 |
 
-### 12. Android 项目垃圾代码生成
+### 9. Android 项目垃圾代码生成
 
 该功能使用 `obfuscate_dart_noise.json` 中的 `androidNoise` 配置，生成 Android 原生侧 Java 垃圾组件、XML 资源和 PNG 图片资源。
 
@@ -565,6 +567,57 @@ XML 资源模板支持占位符：
 | `{{drawableName}}` | 第一个 drawable XML 资源名，便于 layout 引用。 |
 | `{{index}}` | 当前模板序号。 |
 
+### 10. iOS Object-C/Swift AST 混淆
+
+该功能使用 `obfuscate_dart_noise.json` 中的 `iosNoise` 配置，扫描 `ios` 目录下的 `.m`、`.mm` 和 `.swift` 文件。Objective-C/Objective-C++ 通过 `xcrun clang -Xclang -ast-dump=json` 读取 AST，Swift 通过 `xcrun swiftc -dump-ast -parse` 读取 AST。
+
+结果：
+
+- 只在可安全定位的方法或函数体内插入带 marker 的无用代码。
+- Objective-C 和 Swift 使用不同模板组，分别生成对应语言的局部变量、字符串表和受控分支。
+- 默认跳过 `Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
+- 默认不改类名、方法签名、文件名、公开 API、import 或业务语句顺序。
+- 重复执行时会跳过已包含 `obfuscateflutter: ios-noise` marker 的文件，避免重复注入。
+- 输出 `ios_noise_mapping_<timestamp>.json`，记录 AST 命令、扫描文件、注入点、模板、跳过原因和汇总统计。
+
+常用配置：
+
+```json
+{
+  "iosNoise": {
+    "enabled": true,
+    "targetRatio": 0.4,
+    "maxTargetLines": 20000,
+    "maxInsertionsPerFile": 20,
+    "astFallback": "skip",
+    "templateGroups": {
+      "objectiveC": [
+        "oc_string_table",
+        "oc_numeric_fold",
+        "oc_guarded_branch"
+      ],
+      "swift": [
+        "swift_string_table",
+        "swift_numeric_fold",
+        "swift_guarded_branch"
+      ]
+    }
+  }
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `iosNoise.enabled` | 是否启用 iOS AST 混淆。 |
+| `iosNoise.targetRatio` | 目标注入代码量比例；每个可处理文件至少会获得一次安全注入机会，之后受该软预算约束。 |
+| `iosNoise.maxTargetLines` | 本次最多新增源码行数硬上限。 |
+| `iosNoise.maxInsertionsPerFile` | 单个文件最多注入次数。 |
+| `iosNoise.astFallback` | AST 命令失败时的策略；当前仅支持 `skip`。 |
+| `iosNoise.skipFiles` | 跳过文件规则。 |
+| `iosNoise.templateGroups.objectiveC` | Objective-C/Objective-C++ 模板列表。 |
+| `iosNoise.templateGroups.swift` | Swift 模板列表。 |
+| `iosNoise.stringTemplates` | 模板内使用的可读字符串模板。 |
+
 ## 建议流程
 
 需要直接改项目源码时：
@@ -574,11 +627,12 @@ XML 资源模板支持占位符：
 2 图片名称混淆并清理
 3 Android Proguard 字典
 4 String 混淆
-9 统一混淆
-10 Dart 随机代码注入
-11 类内垃圾代码注入
-12 Android 项目垃圾代码生成
-5/6/7 打包
+6 统一混淆
+7 Dart 随机代码注入
+8 类内垃圾代码注入
+9 Android 项目垃圾代码生成
+10 iOS Object-C/Swift AST 混淆
+按需执行构建/打包
 ```
 
 想保持原项目干净时，使用 `x` 在临时目录中执行混淆和打包。
@@ -596,6 +650,6 @@ flutter build apk --release
 
 - 所有会改源码或资源的功能都建议在 Git 干净状态下执行。
 - 功能2当前使用字符串匹配处理图片引用，动态拼接资源路径需要人工复核。
-- 功能4和功能9使用 analyzer AST，稳定性高于纯字符串替换，但仍建议混淆后跑 `dart analyze`。
-- 功能10/11 会增加源码体积，配置过大可能拉长分析和构建时间。
+- 功能4和功能6使用 analyzer AST，稳定性高于纯字符串替换，但仍建议混淆后跑 `dart analyze`。
+- 功能7/8/9/10 会增加源码体积，配置过大可能拉长分析和构建时间。
 - 商店审核、重复包识别并不只看代码和资源字节特征，还会综合产品功能、UI、账号、证书、包名、后端、素材来源等多维信息。本工具只能帮助改变工程层面的部分静态特征，不能保证规避任何审核判定。
