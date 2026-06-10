@@ -637,6 +637,9 @@ List<IosInsertionTarget> _findSwiftInsertionTargets(String source) {
   final functionPattern = RegExp(
     r'\b(static\s+|class\s+)?func\s+([A-Za-z_][A-Za-z0-9_]*)[^{]*\{',
   );
+  final initializerPattern = RegExp(
+    r'\b(?:convenience\s+|required\s+|override\s+|public\s+|private\s+|internal\s+|fileprivate\s+)*init(?:\?|!)?\s*\([^)]*\)[^{]*\{',
+  );
 
   for (final function in functionPattern.allMatches(source)) {
     final bodyStart = source.indexOf('{', function.start);
@@ -650,6 +653,21 @@ List<IosInsertionTarget> _findSwiftInsertionTargets(String source) {
       bodyEndOffset: bodyEnd,
       insertionOffset: bodyStart + 1,
       isStaticLike: function.group(1) != null,
+    ));
+  }
+  for (final initializer in initializerPattern.allMatches(source)) {
+    final bodyStart = source.indexOf('{', initializer.start);
+    if (bodyStart == -1) continue;
+    final bodyEnd = _findMatchingBrace(source, bodyStart);
+    if (bodyEnd == -1) continue;
+    targets.add(IosInsertionTarget(
+      containerName:
+          _swiftContainerName(source, initializer.start, typePattern),
+      methodName: 'init',
+      bodyStartOffset: bodyStart,
+      bodyEndOffset: bodyEnd,
+      insertionOffset: bodyStart + 1,
+      isStaticLike: false,
     ));
   }
 

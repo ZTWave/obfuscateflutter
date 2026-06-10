@@ -422,5 +422,41 @@ final class SceneWorker {
       expect(result.targets, isNotEmpty);
       expect(result.targets.single.methodName, 'sum');
     });
+
+    test('finds Swift initializer body targets through swiftc AST preflight',
+        () async {
+      if (!await iosAstToolsAvailable()) {
+        return markTestSkipped('xcrun AST tools are unavailable');
+      }
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_ast_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+      Directory(p.join(projectDir.path, 'ios', 'Runner'))
+          .createSync(recursive: true);
+      final file =
+          File(p.join(projectDir.path, 'ios', 'Runner', 'Scene.swift'));
+      file.writeAsStringSync('''
+final class SceneWorker {
+  let value: Int
+
+  init(value: Int) {
+    self.value = value
+  }
+}
+''');
+
+      final result = await readIosAstTargets(IosSourceFile(
+        file: file,
+        relativePath: 'ios/Runner/Scene.swift',
+        language: IosLanguage.swift,
+        injectable: true,
+      ));
+
+      expect(result.command, contains('swiftc'));
+      expect(result.exitCode, 0);
+      expect(result.targets, isNotEmpty);
+      expect(result.targets.single.methodName, 'init');
+    });
   });
 }
