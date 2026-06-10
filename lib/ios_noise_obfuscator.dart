@@ -692,7 +692,7 @@ String _escapeIosStringLiteral(String value) {
 }
 
 Future<List<String>> _clangSdkArgs() async {
-  for (final sdk in ['macosx', 'iphoneos']) {
+  for (final sdk in ['iphoneos', 'iphonesimulator', 'macosx']) {
     final result = await Process.run('xcrun', [
       '--sdk',
       sdk,

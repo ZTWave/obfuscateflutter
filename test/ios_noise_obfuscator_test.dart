@@ -382,6 +382,14 @@ void main() {
       ));
 
       expect(result.command, contains('clang'));
+      expect(result.command, isNot(contains('MacOSX.platform')));
+      expect(
+        result.command,
+        anyOf(
+          contains('iPhoneOS.platform'),
+          contains('iPhoneSimulator.platform'),
+        ),
+      );
       expect(result.exitCode, 0);
       expect(result.targets, isNotEmpty);
       expect(result.targets.single.methodName, contains('sum'));
