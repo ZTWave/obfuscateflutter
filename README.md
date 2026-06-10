@@ -573,12 +573,13 @@ XML 资源模板支持占位符：
 
 结果：
 
-- 只在可安全定位的方法或函数体内插入带 marker 的无用代码。
+- 只在可安全定位的方法或函数体内插入无用代码。
 - Objective-C 和 Swift 使用不同模板组，分别生成对应语言的局部变量、字符串表和受控分支。
 - 默认跳过 `Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
 - 默认不改类名、方法签名、文件名、公开 API、import 或业务语句顺序。
-- 重复执行时会跳过已包含 `obfuscateflutter: ios-noise` marker 的文件，避免重复注入。
-- 输出 `ios_noise_mapping_<timestamp>.json`，记录 AST 命令、扫描文件、注入点、模板、跳过原因和汇总统计。
+- 插入代码不再输出 `obfuscateflutter: ios-noise` 注释；重复执行时仍会跳过已包含旧 marker，或命中同语言模板组任意 `dedupePatterns` 的方法体，避免重复注入。
+- 成功写入源码后会尝试格式化被修改的文件：Objective-C/Objective-C++ 使用 `xcrun clang-format -i`，Swift 使用 `xcrun swift-format format --in-place`；格式化工具不可用时不会中断混淆。
+- 输出 `ios_noise_mapping_<timestamp>.json`，记录 AST 命令、格式化命令、扫描文件、注入点、模板、跳过原因和汇总统计。
 
 常用配置：
 
@@ -601,7 +602,27 @@ XML 资源模板支持占位符：
         "swift_numeric_fold",
         "swift_guarded_branch"
       ]
-    }
+    },
+    "codeTemplates": [
+      {
+        "id": "oc_string_table",
+        "language": "objectiveC",
+        "dedupePatterns": [
+          "obfIosText",
+          "obfIosList"
+        ],
+        "body": "NSString *obfIosText{{index}} = @\"{{literalText}}\";\nNSArray *obfIosList{{index}} = @[obfIosText{{index}}, @\"{{literalId}}\"];\nif ([obfIosList{{index}} count] == 912347) { NSLog(@\"%@\", obfIosText{{index}}); }"
+      },
+      {
+        "id": "swift_string_table",
+        "language": "swift",
+        "dedupePatterns": [
+          "obfIosText",
+          "obfIosList"
+        ],
+        "body": "let obfIosText{{index}} = \"{{literalText}}\"\nlet obfIosList{{index}} = [obfIosText{{index}}, \"{{literalId}}\"]\nif obfIosList{{index}}.count == 912347 { print(obfIosText{{index}}) }"
+      }
+    ]
   }
 }
 ```
@@ -617,6 +638,11 @@ XML 资源模板支持占位符：
 | `iosNoise.templateGroups.objectiveC` | Objective-C/Objective-C++ 模板列表。 |
 | `iosNoise.templateGroups.swift` | Swift 模板列表。 |
 | `iosNoise.stringTemplates` | 模板内使用的可读字符串模板。 |
+| `iosNoise.codeTemplates` | 可配置垃圾代码模板；`id` 被 `templateGroups` 引用，`language` 为 `objectiveC` 或 `swift`，`dedupePatterns` 用于重复执行时识别已插入代码，`body` 是要插入到方法体内的代码。 |
+
+`iosNoise.codeTemplates.body` 支持这些占位符：`{{index}}`、`{{seed}}`、`{{seedPlusIndex}}`、`{{literalText}}`、`{{literalId}}`、`{{fileName}}`、`{{methodName}}`。字符串类占位符会按 iOS 字符串字面量转义，模板本身不需要写任何 `obfuscateflutter: ios-noise` 注释。
+
+`iosNoise.codeTemplates.dedupePatterns` 是普通字符串片段数组。工具准备向某个方法体插入垃圾代码前，会检查方法体中是否已包含同语言模板组里任意模板的任意片段；命中则跳过该方法体。自定义模板建议配置 1-3 个稳定且不受格式化空白影响的片段，例如变量核心名或固定 helper 调用，不要包含 `{{index}}` 这类每次执行都会变化的内容。
 
 ## 建议流程
 

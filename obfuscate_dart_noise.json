@@ -942,6 +942,60 @@
         "id": "trace_context",
         "value": "trace.{{fileName}}.{{methodName}}.{{index}}"
       }
+    ],
+    "codeTemplates": [
+      {
+        "id": "oc_string_table",
+        "language": "objectiveC",
+        "dedupePatterns": [
+          "obfIosText",
+          "obfIosList",
+          "obfIosMap"
+        ],
+        "body": "NSString *obfIosText{{index}} = @\"{{literalText}}\";\nNSArray *obfIosList{{index}} = @[obfIosText{{index}}, @\"{{literalId}}\"];\nNSDictionary *obfIosMap{{index}} = @{@\"k\": obfIosText{{index}}, @\"m\": [obfIosList{{index}} firstObject] ?: @\"\"};\nif ([obfIosMap{{index}} count] == 912347) { NSLog(@\"%@\", obfIosMap{{index}}); }"
+      },
+      {
+        "id": "oc_numeric_fold",
+        "language": "objectiveC",
+        "dedupePatterns": [
+          "obfIosSeed"
+        ],
+        "body": "NSInteger obfIosSeed{{index}} = {{seed}};\nobfIosSeed{{index}} = ((obfIosSeed{{index}} << 2) ^ {{seedPlusIndex}}) & 0x7fffffff;\nif (obfIosSeed{{index}} == -1) { NSLog(@\"%ld\", (long)obfIosSeed{{index}}); }"
+      },
+      {
+        "id": "oc_guarded_branch",
+        "language": "objectiveC",
+        "dedupePatterns": [
+          "obfIosGuard"
+        ],
+        "body": "NSInteger obfIosGuard{{index}} = {{seed}} + {{index}};\nif (obfIosGuard{{index}} >= 0) {\n  obfIosGuard{{index}} = (obfIosGuard{{index}} * 31) % 9973;\n} else {\n  obfIosGuard{{index}} = 0;\n}"
+      },
+      {
+        "id": "swift_string_table",
+        "language": "swift",
+        "dedupePatterns": [
+          "obfIosText",
+          "obfIosList",
+          "obfIosMap"
+        ],
+        "body": "let obfIosText{{index}} = \"{{literalText}}\"\nlet obfIosList{{index}} = [obfIosText{{index}}, \"{{literalId}}\"]\nlet obfIosMap{{index}} = [\"k\": obfIosText{{index}}, \"m\": obfIosList{{index}}.first ?? \"\"]\nif obfIosMap{{index}}.count == 912347 { print(obfIosMap{{index}}) }"
+      },
+      {
+        "id": "swift_numeric_fold",
+        "language": "swift",
+        "dedupePatterns": [
+          "obfIosSeed"
+        ],
+        "body": "var obfIosSeed{{index}} = {{seed}}\nobfIosSeed{{index}} = ((obfIosSeed{{index}} << 2) ^ {{seedPlusIndex}}) & 0x7fffffff\nif obfIosSeed{{index}} == -1 { print(obfIosSeed{{index}}) }"
+      },
+      {
+        "id": "swift_guarded_branch",
+        "language": "swift",
+        "dedupePatterns": [
+          "obfIosGuard"
+        ],
+        "body": "var obfIosGuard{{index}} = {{seed}} + {{index}}\nif obfIosGuard{{index}} >= 0 {\n  obfIosGuard{{index}} = (obfIosGuard{{index}} * 31) % 9973\n} else {\n  obfIosGuard{{index}} = 0\n}"
+      }
     ]
   }
 }

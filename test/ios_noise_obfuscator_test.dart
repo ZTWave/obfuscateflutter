@@ -134,6 +134,117 @@ void main() {
         )),
       );
     });
+
+    test('loads configurable Objective-C and Swift code templates', () {
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_cfg_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+
+      File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+          .writeAsStringSync(jsonEncode({
+        'iosNoise': {
+          'templateGroups': {
+            'objectiveC': ['oc_custom_trace'],
+            'swift': ['swift_custom_trace'],
+          },
+          'codeTemplates': [
+            {
+              'id': 'oc_custom_trace',
+              'language': 'objectiveC',
+              'dedupePatterns': ['NSString *custom'],
+              'body':
+                  'NSString *custom{{index}} = @"{{literalText}}";\nif ([custom{{index}} length] == {{seed}}) { NSLog(@"%@", custom{{index}}); }'
+            },
+            {
+              'id': 'swift_custom_trace',
+              'language': 'swift',
+              'dedupePatterns': ['let custom'],
+              'body':
+                  'let custom{{index}} = "{{literalText}}"\nif custom{{index}}.count == {{seed}} { print(custom{{index}}) }'
+            }
+          ],
+        }
+      }));
+
+      final config = IosNoiseConfig.load(projectDir.path);
+
+      expect(config.objectiveCTemplates, ['oc_custom_trace']);
+      expect(config.swiftTemplates, ['swift_custom_trace']);
+      expect(config.codeTemplate('oc_custom_trace').language,
+          IosTemplateLanguage.objectiveC);
+      expect(
+        config.codeTemplate('swift_custom_trace').body,
+        contains('let custom{{index}}'),
+      );
+      expect(config.codeTemplate('oc_custom_trace').dedupePatterns,
+          ['NSString *custom']);
+      expect(config.codeTemplate('swift_custom_trace').dedupePatterns,
+          ['let custom']);
+    });
+
+    test('merges partial code template overrides with defaults', () {
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_cfg_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+
+      File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+          .writeAsStringSync(jsonEncode({
+        'iosNoise': {
+          'codeTemplates': [
+            {
+              'id': 'oc_string_table',
+              'language': 'objectiveC',
+              'body': 'NSInteger custom{{index}} = {{seed}};'
+            }
+          ],
+        }
+      }));
+
+      final config = IosNoiseConfig.load(projectDir.path);
+
+      expect(config.objectiveCTemplates, contains('oc_numeric_fold'));
+      expect(config.codeTemplate('oc_string_table').body,
+          'NSInteger custom{{index}} = {{seed}};');
+      expect(config.codeTemplate('oc_string_table').dedupePatterns,
+          contains('obfIosText'));
+      expect(config.codeTemplate('oc_numeric_fold').body,
+          contains('NSInteger obfIosSeed{{index}}'));
+    });
+
+    test('rejects template groups that reference mismatched code templates',
+        () {
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_cfg_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+
+      File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+          .writeAsStringSync(jsonEncode({
+        'iosNoise': {
+          'templateGroups': {
+            'objectiveC': ['swift_custom_trace'],
+          },
+          'codeTemplates': [
+            {
+              'id': 'swift_custom_trace',
+              'language': 'swift',
+              'body': 'let custom{{index}} = "{{literalText}}"'
+            }
+          ],
+        }
+      }));
+
+      expect(
+        () => IosNoiseConfig.load(projectDir.path),
+        throwsA(isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          contains('iosNoise.templateGroups.objectiveC'),
+        )),
+      );
+    });
   });
 
   group('iOS source planning', () {
@@ -202,7 +313,7 @@ void main() {
           IosLanguage.swift);
     });
 
-    test('renders language-specific marked templates', () {
+    test('renders language-specific templates without marker comments', () {
       final swift = renderIosNoiseTemplate(
         language: IosLanguage.swift,
         templateId: 'swift_string_table',
@@ -224,12 +335,10 @@ void main() {
             id: 'trace', value: 'trace.{{fileName}}.{{methodName}}.{{index}}'),
       );
 
-      expect(swift,
-          contains('// obfuscateflutter: ios-noise start swift_string_table'));
+      expect(swift, isNot(contains('obfuscateflutter: ios-noise')));
       expect(swift, contains('let obfIosText2'));
       expect(swift, contains('trace.Scene.swift.viewDidLoad.2'));
-      expect(objc,
-          contains('// obfuscateflutter: ios-noise start oc_numeric_fold'));
+      expect(objc, isNot(contains('obfuscateflutter: ios-noise')));
       expect(objc, contains('NSInteger obfIosSeed1'));
     });
 
@@ -279,6 +388,37 @@ void main() {
       );
       expect(objc,
           contains(r'NSArray *obfIosList5 = @[obfIosText5, @"trace\\\"id"];'));
+    });
+
+    test('renders configurable code templates with escaped placeholders', () {
+      final swift = renderIosNoiseTemplate(
+        language: IosLanguage.swift,
+        templateId: 'swift_custom_trace',
+        fileName: r'Scene\"Name.swift',
+        methodName: 'view"Did\\Load',
+        index: 7,
+        seed: 59,
+        stringTemplate: IosStringTemplate(
+          id: 'trace',
+          value: r'trace "{{fileName}}" \ {{methodName}}',
+        ),
+        codeTemplate: IosCodeTemplate(
+          id: 'swift_custom_trace',
+          language: IosTemplateLanguage.swift,
+          dedupePatterns: const [],
+          body:
+              'let custom{{index}} = "{{literalText}}"\nlet marker{{index}} = "{{literalId}}"\nif marker{{index}}.count == {{seed}} { print(custom{{index}}) }',
+        ),
+      );
+
+      expect(swift, isNot(contains('obfuscateflutter: ios-noise')));
+      expect(
+        swift,
+        contains(
+          r'let custom7 = "trace \"Scene\\\"Name.swift\" \\ view\"Did\\Load"',
+        ),
+      );
+      expect(swift, contains('if marker7.count == 59'));
     });
 
     test('rejects unsupported and language-mismatched templates', () {
@@ -468,6 +608,56 @@ final class SceneWorker {
     });
   });
 
+  group('iOS source formatting', () {
+    test('formats Objective-C and Swift files through xcrun formatters',
+        () async {
+      final projectDir =
+          Directory.systemTemp.createTempSync('ios_noise_format_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+      final objc = File(p.join(projectDir.path, 'Worker.m'))
+        ..writeAsStringSync('@implementation Worker\n@end\n');
+      final swift = File(p.join(projectDir.path, 'Scene.swift'))
+        ..writeAsStringSync('final class Scene {}\n');
+      final commands = <List<String>>[];
+
+      Future<ProcessResult> runner(
+        String executable,
+        List<String> arguments,
+      ) async {
+        commands.add([executable, ...arguments]);
+        return ProcessResult(1, 0, '', '');
+      }
+
+      final objcResult = await formatIosSourceFileWithRunner(
+        IosSourceFile(
+          file: objc,
+          relativePath: 'ios/Runner/Worker.m',
+          language: IosLanguage.objectiveC,
+          injectable: true,
+        ),
+        runner,
+      );
+      final swiftResult = await formatIosSourceFileWithRunner(
+        IosSourceFile(
+          file: swift,
+          relativePath: 'ios/Runner/Scene.swift',
+          language: IosLanguage.swift,
+          injectable: true,
+        ),
+        runner,
+      );
+
+      expect(objcResult.exitCode, 0);
+      expect(swiftResult.exitCode, 0);
+      expect(commands, [
+        ['xcrun', 'clang-format', '-i', objc.path],
+        ['xcrun', 'swift-format', 'format', '--in-place', swift.path],
+      ]);
+    });
+  });
+
   group('runIosNoiseObfuscation', () {
     test('injects Objective-C and Swift code and writes mapping', () async {
       if (!await iosAstToolsAvailable()) {
@@ -513,8 +703,10 @@ final class SceneWorker {
               .readAsStringSync();
       final header = File(p.join(projectDir.path, 'ios', 'Runner', 'Worker.h'))
           .readAsStringSync();
-      expect(objc, contains('obfuscateflutter: ios-noise start oc_'));
-      expect(swift, contains('obfuscateflutter: ios-noise start swift_'));
+      expect(objc, isNot(contains('obfuscateflutter: ios-noise')));
+      expect(swift, isNot(contains('obfuscateflutter: ios-noise')));
+      expect(objc, contains('obfIos'));
+      expect(swift, contains('obfIos'));
       expect(header, '@interface Worker\n@end\n');
 
       final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
@@ -525,16 +717,70 @@ final class SceneWorker {
       expect(mapping['files_touched'], contains('ios/Runner/Worker.m'));
       expect(mapping['files_touched'], contains('ios/Runner/Scene.swift'));
       expect(mapping['insertions'], hasLength(greaterThanOrEqualTo(2)));
+      final objcNoiseCount = RegExp('obfIos').allMatches(objc).length;
 
       await runIosNoiseObfuscation(projectDir.path);
       final secondObjc =
           File(p.join(projectDir.path, 'ios', 'Runner', 'Worker.m'))
               .readAsStringSync();
       expect(
-        RegExp('obfuscateflutter: ios-noise start')
-            .allMatches(secondObjc)
-            .length,
-        1,
+        RegExp('obfIos').allMatches(secondObjc).length,
+        objcNoiseCount,
+      );
+    });
+
+    test('uses template dedupe patterns instead of a fixed variable prefix',
+        () async {
+      if (!await iosAstToolsAvailable()) {
+        return markTestSkipped('xcrun AST tools are unavailable');
+      }
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_run_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+      Directory(p.join(projectDir.path, 'ios', 'Runner'))
+          .createSync(recursive: true);
+      File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+          .writeAsStringSync(jsonEncode({
+        'iosNoise': {
+          'templateGroups': {
+            'objectiveC': ['oc_custom_trace'],
+          },
+          'codeTemplates': [
+            {
+              'id': 'oc_custom_trace',
+              'language': 'objectiveC',
+              'dedupePatterns': ['customTrace'],
+              'body':
+                  'NSInteger customTrace{{index}} = {{seed}};\nif (customTrace{{index}} == -1) { NSLog(@"%ld", (long)customTrace{{index}}); }'
+            }
+          ],
+        }
+      }));
+      final file = File(p.join(projectDir.path, 'ios', 'Runner', 'Worker.m'));
+      file.writeAsStringSync('''
+#import <Foundation/Foundation.h>
+@interface Worker : NSObject
+- (NSInteger)sum:(NSInteger)value;
+@end
+@implementation Worker
+- (NSInteger)sum:(NSInteger)value {
+  NSInteger base = value + 1;
+  return base;
+}
+@end
+''');
+
+      await runIosNoiseObfuscation(projectDir.path);
+      final first = file.readAsStringSync();
+      await runIosNoiseObfuscation(projectDir.path);
+      final second = file.readAsStringSync();
+
+      expect(first, contains('NSInteger customTrace'));
+      expect(first, isNot(contains('obfIos')));
+      expect(
+        RegExp('NSInteger customTrace').allMatches(second).length,
+        RegExp('NSInteger customTrace').allMatches(first).length,
       );
     });
   });
@@ -553,6 +799,10 @@ final class SceneWorker {
       expect(config.enabled, isTrue);
       expect(config.objectiveCTemplates, contains('oc_string_table'));
       expect(config.swiftTemplates, contains('swift_string_table'));
+      expect(config.codeTemplate('oc_string_table').body,
+          contains('NSString *obfIosText{{index}}'));
+      expect(config.codeTemplate('swift_string_table').body,
+          contains('let obfIosText{{index}}'));
     });
   });
 }

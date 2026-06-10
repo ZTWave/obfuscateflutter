@@ -6,7 +6,7 @@ import 'package:obfuscateflutter/log.dart';
 import 'package:path/path.dart' as p;
 
 const _configFileName = 'obfuscate_dart_noise.json';
-const _marker = 'obfuscateflutter: ios-noise';
+const _legacyMarker = 'obfuscateflutter: ios-noise';
 const _defaultObjectiveCTemplates = [
   'oc_string_table',
   'oc_numeric_fold',
@@ -32,9 +32,89 @@ const _defaultStringTemplates = [
     'value': 'trace.{{fileName}}.{{methodName}}.{{index}}',
   },
 ];
+const _defaultCodeTemplateJson = [
+  {
+    'id': 'oc_string_table',
+    'language': 'objectiveC',
+    'dedupePatterns': [
+      'obfIosText',
+      'obfIosList',
+      'obfIosMap',
+    ],
+    'body': '''
+NSString *obfIosText{{index}} = @"{{literalText}}";
+NSArray *obfIosList{{index}} = @[obfIosText{{index}}, @"{{literalId}}"];
+NSDictionary *obfIosMap{{index}} = @{@"k": obfIosText{{index}}, @"m": [obfIosList{{index}} firstObject] ?: @""};
+if ([obfIosMap{{index}} count] == 912347) { NSLog(@"%@", obfIosMap{{index}}); }
+''',
+  },
+  {
+    'id': 'oc_numeric_fold',
+    'language': 'objectiveC',
+    'dedupePatterns': ['obfIosSeed'],
+    'body': '''
+NSInteger obfIosSeed{{index}} = {{seed}};
+obfIosSeed{{index}} = ((obfIosSeed{{index}} << 2) ^ {{seedPlusIndex}}) & 0x7fffffff;
+if (obfIosSeed{{index}} == -1) { NSLog(@"%ld", (long)obfIosSeed{{index}}); }
+''',
+  },
+  {
+    'id': 'oc_guarded_branch',
+    'language': 'objectiveC',
+    'dedupePatterns': ['obfIosGuard'],
+    'body': '''
+NSInteger obfIosGuard{{index}} = {{seed}} + {{index}};
+if (obfIosGuard{{index}} >= 0) {
+  obfIosGuard{{index}} = (obfIosGuard{{index}} * 31) % 9973;
+} else {
+  obfIosGuard{{index}} = 0;
+}
+''',
+  },
+  {
+    'id': 'swift_string_table',
+    'language': 'swift',
+    'dedupePatterns': [
+      'obfIosText',
+      'obfIosList',
+      'obfIosMap',
+    ],
+    'body': '''
+let obfIosText{{index}} = "{{literalText}}"
+let obfIosList{{index}} = [obfIosText{{index}}, "{{literalId}}"]
+let obfIosMap{{index}} = ["k": obfIosText{{index}}, "m": obfIosList{{index}}.first ?? ""]
+if obfIosMap{{index}}.count == 912347 { print(obfIosMap{{index}}) }
+''',
+  },
+  {
+    'id': 'swift_numeric_fold',
+    'language': 'swift',
+    'dedupePatterns': ['obfIosSeed'],
+    'body': '''
+var obfIosSeed{{index}} = {{seed}}
+obfIosSeed{{index}} = ((obfIosSeed{{index}} << 2) ^ {{seedPlusIndex}}) & 0x7fffffff
+if obfIosSeed{{index}} == -1 { print(obfIosSeed{{index}}) }
+''',
+  },
+  {
+    'id': 'swift_guarded_branch',
+    'language': 'swift',
+    'dedupePatterns': ['obfIosGuard'],
+    'body': '''
+var obfIosGuard{{index}} = {{seed}} + {{index}}
+if obfIosGuard{{index}} >= 0 {
+  obfIosGuard{{index}} = (obfIosGuard{{index}} * 31) % 9973
+} else {
+  obfIosGuard{{index}} = 0
+}
+''',
+  },
+];
 final _identifierPattern = RegExp(r'^[A-Za-z_][A-Za-z0-9_]*$');
 
 enum IosLanguage { objectiveC, objectiveCpp, swift }
+
+enum IosTemplateLanguage { objectiveC, swift }
 
 typedef IosProcessRunner = Future<ProcessResult> Function(
   String executable,
@@ -73,6 +153,20 @@ class IosAstResult {
   final List<String> warnings;
 }
 
+class IosFormatResult {
+  IosFormatResult({
+    required this.command,
+    required this.exitCode,
+    required this.stdout,
+    required this.stderr,
+  });
+
+  final String command;
+  final int exitCode;
+  final String stdout;
+  final String stderr;
+}
+
 class IosInsertionTarget {
   IosInsertionTarget({
     required this.containerName,
@@ -109,6 +203,7 @@ class IosNoiseConfig {
     required this.objectiveCTemplates,
     required this.swiftTemplates,
     required this.stringTemplates,
+    required this.codeTemplates,
     required this.configSource,
   });
 
@@ -121,6 +216,7 @@ class IosNoiseConfig {
   final List<String> objectiveCTemplates;
   final List<String> swiftTemplates;
   final List<IosStringTemplate> stringTemplates;
+  final List<IosCodeTemplate> codeTemplates;
   final String configSource;
 
   static IosNoiseConfig load(String projectPath) {
@@ -162,6 +258,7 @@ class IosNoiseConfig {
       throw StateError('iosNoise.templateGroups must be a JSON object.');
     }
     final groupJson = groups ?? <String, dynamic>{};
+    final codeTemplates = _readCodeTemplates(value);
 
     return IosNoiseConfig(
       enabled: enabled ?? true,
@@ -173,10 +270,19 @@ class IosNoiseConfig {
       astFallback: fallback,
       skipFiles: _readStringList(value, 'skipFiles', _defaultSkipFiles),
       objectiveCTemplates: _readTemplateIds(
-          groupJson, 'objectiveC', _defaultObjectiveCTemplates),
-      swiftTemplates:
-          _readTemplateIds(groupJson, 'swift', _defaultSwiftTemplates),
+        groupJson,
+        'objectiveC',
+        _defaultObjectiveCTemplates,
+        codeTemplates,
+      ),
+      swiftTemplates: _readTemplateIds(
+        groupJson,
+        'swift',
+        _defaultSwiftTemplates,
+        codeTemplates,
+      ),
       stringTemplates: _readStringTemplates(value),
+      codeTemplates: codeTemplates,
       configSource: source,
     );
   }
@@ -195,8 +301,16 @@ class IosNoiseConfig {
           .map((item) =>
               IosStringTemplate(id: item['id']!, value: item['value']!))
           .toList(),
+      codeTemplates: _defaultCodeTemplates(),
       configSource: source,
     );
+  }
+
+  IosCodeTemplate codeTemplate(String id) {
+    for (final template in codeTemplates) {
+      if (template.id == id) return template;
+    }
+    throw StateError('Unsupported iOS template: $id');
   }
 
   bool shouldSkip(String relativePath) {
@@ -217,6 +331,8 @@ class IosNoiseConfig {
         },
         'stringTemplates':
             stringTemplates.map((template) => template.toJson()).toList(),
+        'codeTemplates':
+            codeTemplates.map((template) => template.toJson()).toList(),
         'configSource': configSource,
       };
 }
@@ -228,6 +344,30 @@ class IosStringTemplate {
   final String value;
 
   Map<String, dynamic> toJson() => {'id': id, 'value': value};
+}
+
+class IosCodeTemplate {
+  IosCodeTemplate({
+    required this.id,
+    required this.language,
+    required this.body,
+    required this.dedupePatterns,
+  });
+
+  final String id;
+  final IosTemplateLanguage language;
+  final String body;
+  final List<String> dedupePatterns;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'language': switch (language) {
+          IosTemplateLanguage.objectiveC => 'objectiveC',
+          IosTemplateLanguage.swift => 'swift',
+        },
+        'dedupePatterns': dedupePatterns,
+        'body': body,
+      };
 }
 
 Future<void> runIosNoiseObfuscation(String projectPath) async {
@@ -247,6 +387,7 @@ Future<void> runIosNoiseObfuscation(String projectPath) async {
   final skipped = <Map<String, dynamic>>[];
   final touched = <String>{};
   final commands = <Map<String, dynamic>>[];
+  final formatCommands = <Map<String, dynamic>>[];
   var addedLines = 0;
   final targetLines = min(
     config.maxTargetLines,
@@ -297,14 +438,22 @@ Future<void> runIosNoiseObfuscation(String projectPath) async {
       }
       if (source
           .substring(target.bodyStartOffset, target.bodyEndOffset)
-          .contains(_marker)) {
+          .contains(_legacyMarker)) {
         continue;
       }
 
       final templateIds = sourceFile.language == IosLanguage.swift
           ? config.swiftTemplates
           : config.objectiveCTemplates;
+      final targetSource =
+          source.substring(target.bodyStartOffset, target.bodyEndOffset);
+      if (templateIds
+          .map(config.codeTemplate)
+          .any((template) => _matchesDedupePattern(targetSource, template))) {
+        continue;
+      }
       final templateId = templateIds[insertions.length % templateIds.length];
+      final codeTemplate = config.codeTemplate(templateId);
       final stringTemplate = config
           .stringTemplates[insertions.length % config.stringTemplates.length];
       final block = renderIosNoiseTemplate(
@@ -315,6 +464,7 @@ Future<void> runIosNoiseObfuscation(String projectPath) async {
         index: insertions.length,
         seed: 1009 + insertions.length * 37,
         stringTemplate: stringTemplate,
+        codeTemplate: codeTemplate,
       );
       replacements.add(_Replacement(target.insertionOffset, '\n$block'));
       final blockLines =
@@ -344,6 +494,19 @@ Future<void> runIosNoiseObfuscation(String projectPath) async {
         );
       }
       sourceFile.file.writeAsStringSync(modified);
+      final format = await formatIosSourceFile(sourceFile);
+      formatCommands.add({
+        'file': sourceFile.relativePath,
+        'command': format.command,
+        'exit_code': format.exitCode,
+        'stderr': format.stderr.trim(),
+      });
+      if (format.exitCode != 0) {
+        Log.log(
+          'iOS source formatter skipped or failed for '
+          '${sourceFile.relativePath}: ${format.stderr.trim()}',
+        );
+      }
     }
   }
 
@@ -355,6 +518,7 @@ Future<void> runIosNoiseObfuscation(String projectPath) async {
       'config': config.toJson(),
       'config_file': config.configSource,
       'ast_commands': commands,
+      'format_commands': formatCommands,
       'files_scanned': files.map((file) => file.relativePath).toList(),
       'files_touched': touched.toList()..sort(),
       'insertions': insertions,
@@ -419,14 +583,16 @@ String renderIosNoiseTemplate({
   required int index,
   required int seed,
   required IosStringTemplate stringTemplate,
+  IosCodeTemplate? codeTemplate,
 }) {
-  final supported = switch (language) {
-    IosLanguage.swift => templateId.startsWith('swift_'),
+  final template = codeTemplate ?? _defaultCodeTemplate(templateId);
+  final languageMatches = switch (language) {
+    IosLanguage.swift => template.language == IosTemplateLanguage.swift,
     IosLanguage.objectiveC ||
     IosLanguage.objectiveCpp =>
-      templateId.startsWith('oc_'),
+      template.language == IosTemplateLanguage.objectiveC,
   };
-  if (!supported) {
+  if (template.id != templateId || !languageMatches) {
     throw StateError('Unsupported iOS template: $templateId');
   }
 
@@ -440,47 +606,15 @@ String renderIosNoiseTemplate({
   final literalText = _escapeIosStringLiteral(text);
   final literalId = _escapeIosStringLiteral(stringTemplate.id);
 
-  return switch (templateId) {
-    'oc_string_table' => _marked(templateId, '''
-NSString *obfIosText$index = @"$literalText";
-NSArray *obfIosList$index = @[obfIosText$index, @"$literalId"];
-NSDictionary *obfIosMap$index = @{@"k": obfIosText$index, @"m": [obfIosList$index firstObject] ?: @""};
-if ([obfIosMap$index count] == 912347) { NSLog(@"%@", obfIosMap$index); }
-'''),
-    'oc_numeric_fold' => _marked(templateId, '''
-NSInteger obfIosSeed$index = $seed;
-obfIosSeed$index = ((obfIosSeed$index << 2) ^ ${seed + index}) & 0x7fffffff;
-if (obfIosSeed$index == -1) { NSLog(@"%ld", (long)obfIosSeed$index); }
-'''),
-    'oc_guarded_branch' => _marked(templateId, '''
-NSInteger obfIosGuard$index = $seed + $index;
-if (obfIosGuard$index >= 0) {
-  obfIosGuard$index = (obfIosGuard$index * 31) % 9973;
-} else {
-  obfIosGuard$index = 0;
-}
-'''),
-    'swift_string_table' => _marked(templateId, '''
-let obfIosText$index = "$literalText"
-let obfIosList$index = [obfIosText$index, "$literalId"]
-let obfIosMap$index = ["k": obfIosText$index, "m": obfIosList$index.first ?? ""]
-if obfIosMap$index.count == 912347 { print(obfIosMap$index) }
-'''),
-    'swift_numeric_fold' => _marked(templateId, '''
-var obfIosSeed$index = $seed
-obfIosSeed$index = ((obfIosSeed$index << 2) ^ ${seed + index}) & 0x7fffffff
-if obfIosSeed$index == -1 { print(obfIosSeed$index) }
-'''),
-    'swift_guarded_branch' => _marked(templateId, '''
-var obfIosGuard$index = $seed + $index
-if obfIosGuard$index >= 0 {
-  obfIosGuard$index = (obfIosGuard$index * 31) % 9973
-} else {
-  obfIosGuard$index = 0
-}
-'''),
-    _ => throw StateError('Unsupported iOS template: $templateId'),
-  };
+  return _renderCodeTemplate(
+    template.body,
+    fileName: fileName,
+    methodName: methodName,
+    index: index,
+    seed: seed,
+    literalText: literalText,
+    literalId: literalId,
+  );
 }
 
 Future<bool> iosAstToolsAvailable() {
@@ -538,7 +672,7 @@ Future<IosAstResult> readIosAstTargets(IosSourceFile sourceFile) async {
 
   if (!sourceFile.injectable) {
     warnings.add('Source file is not injectable.');
-  } else if (source.contains(_marker)) {
+  } else if (source.contains(_legacyMarker)) {
     warnings.add('Source file already contains iOS noise markers.');
   } else if (result.exitCode == 0) {
     targets.addAll(switch (sourceFile.language) {
@@ -557,6 +691,46 @@ Future<IosAstResult> readIosAstTargets(IosSourceFile sourceFile) async {
     targets: targets,
     warnings: warnings,
   );
+}
+
+Future<IosFormatResult> formatIosSourceFile(IosSourceFile sourceFile) {
+  return formatIosSourceFileWithRunner(sourceFile, Process.run);
+}
+
+Future<IosFormatResult> formatIosSourceFileWithRunner(
+  IosSourceFile sourceFile,
+  IosProcessRunner runner,
+) async {
+  final args = switch (sourceFile.language) {
+    IosLanguage.objectiveC || IosLanguage.objectiveCpp => [
+        'clang-format',
+        '-i',
+        sourceFile.file.path,
+      ],
+    IosLanguage.swift => [
+        'swift-format',
+        'format',
+        '--in-place',
+        sourceFile.file.path,
+      ],
+  };
+
+  try {
+    final result = await runner('xcrun', args);
+    return IosFormatResult(
+      command: _shellCommand(['xcrun', ...args]),
+      exitCode: result.exitCode,
+      stdout: '${result.stdout}',
+      stderr: '${result.stderr}',
+    );
+  } on ProcessException catch (error) {
+    return IosFormatResult(
+      command: _shellCommand(['xcrun', ...args]),
+      exitCode: -1,
+      stdout: '',
+      stderr: error.message,
+    );
+  }
 }
 
 File _resolveConfigFile(String projectPath) {
@@ -598,22 +772,100 @@ List<String> _readTemplateIds(
   Map<String, dynamic> json,
   String key,
   List<String> defaults,
+  List<IosCodeTemplate> codeTemplates,
 ) {
   final values = _readStringList(json, key, defaults);
   if (values.isEmpty) {
     throw StateError('iosNoise.templateGroups.$key must not be empty.');
   }
-  final known = key == 'objectiveC'
-      ? _defaultObjectiveCTemplates
-      : _defaultSwiftTemplates;
+  final expectedLanguage = key == 'objectiveC'
+      ? IosTemplateLanguage.objectiveC
+      : IosTemplateLanguage.swift;
+  final templatesById = {
+    for (final template in codeTemplates) template.id: template,
+  };
   for (final value in values) {
-    if (!known.contains(value)) {
+    final template = templatesById[value];
+    if (template == null || template.language != expectedLanguage) {
       throw StateError(
         'iosNoise.templateGroups.$key contains unsupported template: $value.',
       );
     }
   }
   return values;
+}
+
+List<IosCodeTemplate> _readCodeTemplates(Map<String, dynamic> json) {
+  final value = json['codeTemplates'];
+  if (value == null) return _defaultCodeTemplates();
+  if (value is! List) {
+    throw StateError('iosNoise.codeTemplates must be an array.');
+  }
+  if (value.isEmpty) {
+    throw StateError('iosNoise.codeTemplates must not be empty.');
+  }
+
+  final ids = <String>{};
+  final templatesById = {
+    for (final template in _defaultCodeTemplates()) template.id: template,
+  };
+  for (final item in value) {
+    if (item is! Map<String, dynamic>) {
+      throw StateError('iosNoise.codeTemplates entries must be objects.');
+    }
+    final id = item['id'];
+    if (id is! String || !_identifierPattern.hasMatch(id)) {
+      throw StateError('iosNoise.codeTemplates.id must be an identifier.');
+    }
+    if (!ids.add(id)) {
+      throw StateError('Duplicate iosNoise code template id: $id.');
+    }
+    final language = switch (item['language']) {
+      'objectiveC' => IosTemplateLanguage.objectiveC,
+      'swift' => IosTemplateLanguage.swift,
+      _ => throw StateError(
+          'iosNoise.codeTemplates.language must be objectiveC or swift.'),
+    };
+    final body = item['body'];
+    if (body is! String || body.trim().isEmpty) {
+      throw StateError('iosNoise.codeTemplates.body must be non-empty.');
+    }
+    final existing = templatesById[id];
+    final dedupePatterns =
+        _readCodeTemplateDedupePatterns(item, existing?.dedupePatterns);
+    if (existing != null && existing.language != language) {
+      throw StateError(
+        'iosNoise.codeTemplates.$id cannot change template language.',
+      );
+    }
+    templatesById[id] = IosCodeTemplate(
+      id: id,
+      language: language,
+      body: body,
+      dedupePatterns: dedupePatterns,
+    );
+  }
+  return templatesById.values.toList();
+}
+
+List<String> _readCodeTemplateDedupePatterns(
+  Map<String, dynamic> json,
+  List<String>? defaults,
+) {
+  final value = json['dedupePatterns'];
+  if (value == null) return List<String>.from(defaults ?? const []);
+  if (value is! List ||
+      value.any((item) => item is! String || item.trim().isEmpty)) {
+    throw StateError(
+      'iosNoise.codeTemplates.dedupePatterns must be a non-empty string array.',
+    );
+  }
+  if (value.isEmpty) {
+    throw StateError(
+      'iosNoise.codeTemplates.dedupePatterns must not be empty.',
+    );
+  }
+  return value.cast<String>();
 }
 
 List<IosStringTemplate> _readStringTemplates(Map<String, dynamic> json) {
@@ -657,13 +909,27 @@ bool _globMatches(String pattern, String path) {
   return RegExp('^$source\$').hasMatch(path);
 }
 
-String _marked(String templateId, String body) {
-  final normalized = body.trimRight();
-  return '''
-// $_marker start $templateId
-$normalized
-// $_marker end $templateId
-''';
+String _renderCodeTemplate(
+  String template, {
+  required String fileName,
+  required String methodName,
+  required int index,
+  required int seed,
+  required String literalText,
+  required String literalId,
+}) {
+  return template
+      .replaceAll('{{fileName}}', _escapeIosStringLiteral(fileName))
+      .replaceAll('{{methodName}}', _escapeIosStringLiteral(methodName))
+      .replaceAll('{{index}}', '$index')
+      .replaceAll('{{seed}}', '$seed')
+      .replaceAll('{{seedPlusIndex}}', '${seed + index}')
+      .replaceAll('{{literalText}}', literalText)
+      .replaceAll('{{literalId}}', literalId);
+}
+
+bool _matchesDedupePattern(String source, IosCodeTemplate template) {
+  return template.dedupePatterns.any(source.contains);
 }
 
 String _renderStringTemplate(
@@ -689,6 +955,31 @@ String _escapeIosStringLiteral(String value) {
       .replaceAll('\r', r'\r')
       .replaceAll('\n', r'\n')
       .replaceAll('\t', r'\t');
+}
+
+List<IosCodeTemplate> _defaultCodeTemplates() {
+  return _defaultCodeTemplateJson.map(_codeTemplateFromJson).toList();
+}
+
+IosCodeTemplate _defaultCodeTemplate(String id) {
+  for (final template in _defaultCodeTemplates()) {
+    if (template.id == id) return template;
+  }
+  throw StateError('Unsupported iOS template: $id');
+}
+
+IosCodeTemplate _codeTemplateFromJson(Map<String, dynamic> item) {
+  final language = switch (item['language']) {
+    'objectiveC' => IosTemplateLanguage.objectiveC,
+    'swift' => IosTemplateLanguage.swift,
+    _ => throw StateError('Unsupported default iOS template language.'),
+  };
+  return IosCodeTemplate(
+    id: item['id']!,
+    language: language,
+    body: item['body']!,
+    dedupePatterns: (item['dedupePatterns']! as List).cast<String>(),
+  );
 }
 
 Future<List<String>> _clangSdkArgs() async {
