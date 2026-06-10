@@ -907,6 +907,83 @@
       }
     ]
   },
+  "iosFileRename": {
+    "enabled": true,
+    "includeExtensions": [
+      ".m",
+      ".h",
+      ".mm",
+      ".swift"
+    ],
+    "skipFiles": [
+      "**/Pods/**",
+      "**/.symlinks/**",
+      "**/Flutter/**",
+      "**/GeneratedPluginRegistrant.*",
+      "**/build/**",
+      "**/*.pbobjc.*"
+    ],
+    "nameTemplates": [
+      "{Word}{Kind}"
+    ],
+    "semanticWords": [
+      "Session",
+      "Profile",
+      "Route",
+      "Cache",
+      "Account",
+      "Message",
+      "Media",
+      "State"
+    ],
+    "kinds": [
+      "RouteView",
+      "StateBridge",
+      "ProfileManager",
+      "SessionAdapter",
+      "CacheStore",
+      "MessageCoordinator",
+      "MediaController",
+      "AccountPresenter"
+    ]
+  },
+  "iosFunctionRename": {
+    "enabled": true,
+    "includeExtensions": [
+      ".m",
+      ".mm",
+      ".swift"
+    ],
+    "skipFiles": [
+      "**/Pods/**",
+      "**/.symlinks/**",
+      "**/Flutter/**",
+      "**/GeneratedPluginRegistrant.*",
+      "**/build/**",
+      "**/*.pbobjc.*"
+    ],
+    "nameTemplates": [
+      "handle{Word}{Kind}",
+      "sync{Word}{Kind}",
+      "prepare{Word}{Kind}"
+    ],
+    "semanticWords": [
+      "Session",
+      "Profile",
+      "Route",
+      "Cache",
+      "Message",
+      "State"
+    ],
+    "kinds": [
+      "State",
+      "Payload",
+      "Context",
+      "Result",
+      "Bridge",
+      "Store"
+    ]
+  },
   "iosNoise": {
     "enabled": true,
     "targetRatio": 0.4,

@@ -644,6 +644,93 @@ XML 资源模板支持占位符：
 
 `iosNoise.codeTemplates.dedupePatterns` 是普通字符串片段数组。工具准备向某个方法体插入垃圾代码前，会检查方法体中是否已包含同语言模板组里任意模板的任意片段；命中则跳过该方法体。自定义模板建议配置 1-3 个稳定且不受格式化空白影响的片段，例如变量核心名或固定 helper 调用，不要包含 `{{index}}` 这类每次执行都会变化的内容。
 
+### 11. iOS 项目文件名替换
+
+该功能使用 `obfuscate_dart_noise.json` 中的 `iosFileRename` 配置，扫描 `ios` 目录下的 `.m`、`.h`、`.mm` 和 `.swift` 文件，把文件名替换为有意义的业务风格名称，并同步更新源码和 `project.pbxproj` 中的文件名引用。
+
+结果：
+
+- `.h/.m/.mm` 同 basename 成组重命名，保持扩展名不变；`.swift` 单文件重命名。
+- 默认跳过 `Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
+- 只改文件名和文件名引用，不改 Objective-C/Swift 类名、方法名、公开 API 或业务逻辑。
+- 更新 `#import "OldName.h"`、`#include "OldName.h"`、`#import <.../OldName.h>`、完整文件名字符串和 `project.pbxproj` 文件引用。
+- 输出 `ios_file_rename_mapping_<timestamp>.json`，记录文件重命名、跳过项、重写文件、静态校验和 `xcodebuild -list` 校验结果。
+
+常用配置：
+
+```json
+{
+  "iosFileRename": {
+    "enabled": true,
+    "includeExtensions": [".m", ".h", ".mm", ".swift"],
+    "skipFiles": [
+      "**/Pods/**",
+      "**/.symlinks/**",
+      "**/Flutter/**",
+      "**/GeneratedPluginRegistrant.*",
+      "**/build/**",
+      "**/*.pbobjc.*"
+    ],
+    "nameTemplates": ["{Word}{Kind}"],
+    "semanticWords": ["Session", "Profile", "Route", "Cache"],
+    "kinds": ["RouteView", "StateBridge", "ProfileManager", "SessionAdapter"]
+  }
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `iosFileRename.enabled` | 是否启用 iOS 文件名替换。 |
+| `iosFileRename.includeExtensions` | 参与替换的扩展名。 |
+| `iosFileRename.skipFiles` | 跳过文件规则。 |
+| `iosFileRename.nameTemplates` | 新 basename 模板；支持 `{Word}` 和 `{Kind}`。 |
+| `iosFileRename.semanticWords` | 业务语义词池。 |
+| `iosFileRename.kinds` | 文件角色词池。 |
+
+### 12. iOS 内部函数换名
+
+该功能使用 `obfuscate_dart_noise.json` 中的 `iosFunctionRename` 配置，扫描 `ios` 目录下的项目自有 `.m`、`.mm` 和 `.swift` 文件，对低风险内部函数进行换名，并同步更新当前文件内的调用引用。
+
+当前仅处理安全子集：
+
+- Objective-C / C：文件内 `static` C 函数，例如 `static void legacyRun(void)`。
+- Objective-C：`.m/.mm` 内未在 `.h` 暴露的私有 `- / +` 方法 selector；同一个 selector 的 class extension 声明、实现和同文件调用会同步更新。
+- Swift：`private func`、`fileprivate func`、`private static func`、`fileprivate static func`。
+- 默认跳过 `Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
+- 不改 `.h` 公开 Objective-C 方法，不改公开 Swift 函数，不改 `@objc` / `@IBAction` Swift 方法，不改 `main`、`init*`、`set*`、常见生命周期方法、协议/SDK 回调和融云等消息类型固定 selector（如 `getObjectName`、`persistentFlag`）。
+- 输出 `ios_function_rename_mapping_<timestamp>.json`，记录函数换名、跳过项、重写文件、静态校验和 `xcodebuild -list` 校验结果。
+
+常用配置：
+
+```json
+{
+  "iosFunctionRename": {
+    "enabled": true,
+    "includeExtensions": [".m", ".mm", ".swift"],
+    "skipFiles": [
+      "**/Pods/**",
+      "**/.symlinks/**",
+      "**/Flutter/**",
+      "**/GeneratedPluginRegistrant.*",
+      "**/build/**",
+      "**/*.pbobjc.*"
+    ],
+    "nameTemplates": ["handle{Word}{Kind}", "sync{Word}{Kind}", "prepare{Word}{Kind}"],
+    "semanticWords": ["Session", "Profile", "Route", "Cache", "Message"],
+    "kinds": ["State", "Payload", "Context", "Result", "Bridge"]
+  }
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `iosFunctionRename.enabled` | 是否启用 iOS 内部函数换名。 |
+| `iosFunctionRename.includeExtensions` | 参与扫描的扩展名。 |
+| `iosFunctionRename.skipFiles` | 跳过文件规则。 |
+| `iosFunctionRename.nameTemplates` | 新函数名模板；支持 `{Word}` 和 `{Kind}`。 |
+| `iosFunctionRename.semanticWords` | 业务语义词池。 |
+| `iosFunctionRename.kinds` | 函数角色词池。 |
+
 ## 建议流程
 
 需要直接改项目源码时：
@@ -658,6 +745,8 @@ XML 资源模板支持占位符：
 8 类内垃圾代码注入
 9 Android 项目垃圾代码生成
 10 iOS Object-C/Swift AST 混淆
+11 iOS 项目文件名替换
+12 iOS 内部函数换名
 按需执行构建/打包
 ```
 
@@ -678,4 +767,5 @@ flutter build apk --release
 - 功能2当前使用字符串匹配处理图片引用，动态拼接资源路径需要人工复核。
 - 功能4和功能6使用 analyzer AST，稳定性高于纯字符串替换，但仍建议混淆后跑 `dart analyze`。
 - 功能7/8/9/10 会增加源码体积，配置过大可能拉长分析和构建时间。
+- 功能11/12 会直接修改 iOS 源码引用；建议先提交当前代码或在临时目录中执行，再用 mapping 文件复核结果。
 - 商店审核、重复包识别并不只看代码和资源字节特征，还会综合产品功能、UI、账号、证书、包名、后端、素材来源等多维信息。本工具只能帮助改变工程层面的部分静态特征，不能保证规避任何审核判定。

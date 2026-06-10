@@ -8,6 +8,8 @@ import 'package:obfuscateflutter/dart_noise_obfuscator.dart';
 import 'package:obfuscateflutter/encrypt_string.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
+import 'package:obfuscateflutter/ios_file_renamer.dart';
+import 'package:obfuscateflutter/ios_function_renamer.dart';
 import 'package:obfuscateflutter/ios_noise_obfuscator.dart';
 import 'package:obfuscateflutter/preflight_checker.dart';
 import 'package:obfuscateflutter/proguard_images.dart';
@@ -88,6 +90,8 @@ Future<void> _readTaskAndDo(
   8.类内垃圾代码/字符串注入
   9.Android项目垃圾代码生成
   10.iOS Object-C/Swift AST 混淆
+  11.iOS 项目文件名替换
+  12.iOS 内部函数换名
 
   x.在临时生成目录中进行执行上述混淆任务''');
   print('输入要运行的任务：');
@@ -142,6 +146,16 @@ Future<void> _readTaskAndDo(
     case "10":
       {
         await _runIosNoiseObfuscation(projectPath);
+        break;
+      }
+    case "11":
+      {
+        await _runIosFileRename(projectPath);
+        break;
+      }
+    case "12":
+      {
+        await _runIosFunctionRename(projectPath);
         break;
       }
     case "x":
@@ -223,6 +237,18 @@ Future<void> _runIosNoiseObfuscation(String projectPath) async {
   print('do ios ast noise obfuscation');
   await runIosNoiseObfuscation(projectPath);
   print('do ios ast noise obfuscation finished');
+}
+
+Future<void> _runIosFileRename(String projectPath) async {
+  print('do ios file rename');
+  await runIosFileRename(projectPath);
+  print('do ios file rename finished');
+}
+
+Future<void> _runIosFunctionRename(String projectPath) async {
+  print('do ios function rename');
+  await runIosFunctionRename(projectPath);
+  print('do ios function rename finished');
 }
 
 final parser = ArgParser(allowTrailingOptions: true)
