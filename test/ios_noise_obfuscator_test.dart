@@ -459,4 +459,75 @@ final class SceneWorker {
       expect(result.targets.single.methodName, 'init');
     });
   });
+
+  group('runIosNoiseObfuscation', () {
+    test('injects Objective-C and Swift code and writes mapping', () async {
+      if (!await iosAstToolsAvailable()) {
+        return markTestSkipped('xcrun AST tools are unavailable');
+      }
+      final projectDir = Directory.systemTemp.createTempSync('ios_noise_run_');
+      addTearDown(() {
+        if (projectDir.existsSync()) projectDir.deleteSync(recursive: true);
+      });
+      Directory(p.join(projectDir.path, 'ios', 'Runner'))
+          .createSync(recursive: true);
+      File(p.join(projectDir.path, 'ios', 'Runner', 'Worker.m'))
+          .writeAsStringSync('''
+#import <Foundation/Foundation.h>
+@interface Worker : NSObject
+- (NSInteger)sum:(NSInteger)value;
+@end
+@implementation Worker
+- (NSInteger)sum:(NSInteger)value {
+  NSInteger base = value + 1;
+  return base;
+}
+@end
+''');
+      File(p.join(projectDir.path, 'ios', 'Runner', 'Scene.swift'))
+          .writeAsStringSync('''
+final class SceneWorker {
+  func sum(_ value: Int) -> Int {
+    let base = value + 1
+    return base
+  }
+}
+''');
+      File(p.join(projectDir.path, 'ios', 'Runner', 'Worker.h'))
+          .writeAsStringSync('@interface Worker\n@end\n');
+
+      await runIosNoiseObfuscation(projectDir.path);
+
+      final objc = File(p.join(projectDir.path, 'ios', 'Runner', 'Worker.m'))
+          .readAsStringSync();
+      final swift =
+          File(p.join(projectDir.path, 'ios', 'Runner', 'Scene.swift'))
+              .readAsStringSync();
+      final header = File(p.join(projectDir.path, 'ios', 'Runner', 'Worker.h'))
+          .readAsStringSync();
+      expect(objc, contains('obfuscateflutter: ios-noise start oc_'));
+      expect(swift, contains('obfuscateflutter: ios-noise start swift_'));
+      expect(header, '@interface Worker\n@end\n');
+
+      final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
+            (file) => p.basename(file.path).startsWith('ios_noise_mapping_'),
+          );
+      final mapping =
+          jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+      expect(mapping['files_touched'], contains('ios/Runner/Worker.m'));
+      expect(mapping['files_touched'], contains('ios/Runner/Scene.swift'));
+      expect(mapping['insertions'], hasLength(greaterThanOrEqualTo(2)));
+
+      await runIosNoiseObfuscation(projectDir.path);
+      final secondObjc =
+          File(p.join(projectDir.path, 'ios', 'Runner', 'Worker.m'))
+              .readAsStringSync();
+      expect(
+        RegExp('obfuscateflutter: ios-noise start')
+            .allMatches(secondObjc)
+            .length,
+        1,
+      );
+    });
+  });
 }

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:obfuscateflutter/log.dart';
 import 'package:path/path.dart' as p;
@@ -88,6 +89,13 @@ class IosInsertionTarget {
   final int bodyEndOffset;
   final int insertionOffset;
   final bool isStaticLike;
+}
+
+class _Replacement {
+  _Replacement(this.offset, this.text);
+
+  final int offset;
+  final String text;
 }
 
 class IosNoiseConfig {
@@ -222,7 +230,7 @@ class IosStringTemplate {
   Map<String, dynamic> toJson() => {'id': id, 'value': value};
 }
 
-void runIosNoiseObfuscation(String projectPath) {
+Future<void> runIosNoiseObfuscation(String projectPath) async {
   final projectDir = Directory(projectPath);
   if (!projectDir.existsSync()) {
     throw StateError('Project directory not found: $projectPath');
@@ -234,7 +242,134 @@ void runIosNoiseObfuscation(String projectPath) {
     return;
   }
 
-  throw UnimplementedError('iOS noise obfuscation is not implemented yet.');
+  final files = discoverIosSourceFiles(projectPath, config);
+  final insertions = <Map<String, dynamic>>[];
+  final skipped = <Map<String, dynamic>>[];
+  final touched = <String>{};
+  final commands = <Map<String, dynamic>>[];
+  var addedLines = 0;
+  final targetLines = min(
+    config.maxTargetLines,
+    max(1, (_countProcessableLines(files) * config.targetRatio).round()),
+  );
+
+  for (final sourceFile in files) {
+    if (!sourceFile.injectable) {
+      skipped.add({
+        'file': sourceFile.relativePath,
+        'reason': 'read_only_header',
+      });
+      continue;
+    }
+
+    final ast = await readIosAstTargets(sourceFile);
+    commands.add({
+      'file': sourceFile.relativePath,
+      'command': ast.command,
+      'exit_code': ast.exitCode,
+      'stderr': ast.stderr.trim(),
+    });
+
+    if (ast.exitCode != 0) {
+      skipped.add({
+        'file': sourceFile.relativePath,
+        'reason': 'ast_failed',
+        'stderr': ast.stderr.trim(),
+      });
+      continue;
+    }
+    if (ast.targets.isEmpty) {
+      skipped.add({
+        'file': sourceFile.relativePath,
+        'reason': 'no_safe_targets',
+      });
+      continue;
+    }
+
+    final source = sourceFile.file.readAsStringSync();
+    final replacements = <_Replacement>[];
+    var perFile = 0;
+    for (final target in ast.targets) {
+      if (perFile >= config.maxInsertionsPerFile ||
+          addedLines >= config.maxTargetLines ||
+          (perFile > 0 && addedLines >= targetLines)) {
+        break;
+      }
+      if (source
+          .substring(target.bodyStartOffset, target.bodyEndOffset)
+          .contains(_marker)) {
+        continue;
+      }
+
+      final templateIds = sourceFile.language == IosLanguage.swift
+          ? config.swiftTemplates
+          : config.objectiveCTemplates;
+      final templateId = templateIds[insertions.length % templateIds.length];
+      final stringTemplate = config
+          .stringTemplates[insertions.length % config.stringTemplates.length];
+      final block = renderIosNoiseTemplate(
+        language: sourceFile.language,
+        templateId: templateId,
+        fileName: p.basename(sourceFile.relativePath),
+        methodName: target.methodName,
+        index: insertions.length,
+        seed: 1009 + insertions.length * 37,
+        stringTemplate: stringTemplate,
+      );
+      replacements.add(_Replacement(target.insertionOffset, '\n$block'));
+      final blockLines =
+          block.split('\n').where((line) => line.trim().isNotEmpty).length;
+      addedLines += blockLines;
+      perFile++;
+      touched.add(sourceFile.relativePath);
+      insertions.add({
+        'file': sourceFile.relativePath,
+        'language': sourceFile.language.name,
+        'container': target.containerName,
+        'method': target.methodName,
+        'template_id': templateId,
+        'offset': target.insertionOffset,
+        'added_lines': blockLines,
+      });
+    }
+
+    if (replacements.isNotEmpty) {
+      var modified = source;
+      replacements.sort((a, b) => b.offset.compareTo(a.offset));
+      for (final replacement in replacements) {
+        modified = modified.replaceRange(
+          replacement.offset,
+          replacement.offset,
+          replacement.text,
+        );
+      }
+      sourceFile.file.writeAsStringSync(modified);
+    }
+  }
+
+  final mappingPath =
+      p.join(projectPath, 'ios_noise_mapping_${_timestamp()}.json');
+  File(mappingPath).writeAsStringSync(
+    const JsonEncoder.withIndent('  ').convert({
+      'generated_at': DateTime.now().toIso8601String(),
+      'config': config.toJson(),
+      'config_file': config.configSource,
+      'ast_commands': commands,
+      'files_scanned': files.map((file) => file.relativePath).toList(),
+      'files_touched': touched.toList()..sort(),
+      'insertions': insertions,
+      'skipped': skipped,
+      'summary': {
+        'files_scanned': files.length,
+        'files_touched': touched.length,
+        'insertions': insertions.length,
+        'added_lines': addedLines,
+      },
+    }),
+  );
+
+  Log.log('iOS noise obfuscation complete.');
+  Log.log('Mapping document: $mappingPath');
 }
 
 List<IosSourceFile> discoverIosSourceFiles(
@@ -748,4 +883,22 @@ int _findMatchingBrace(String source, int openOffset) {
   }
 
   return -1;
+}
+
+int _countProcessableLines(List<IosSourceFile> files) {
+  var count = 0;
+  for (final file in files.where((file) => file.injectable)) {
+    count += file.file
+        .readAsLinesSync()
+        .where((line) => line.trim().isNotEmpty)
+        .length;
+  }
+  return count;
+}
+
+String _timestamp() {
+  final now = DateTime.now();
+  String pad(int value) => value.toString().padLeft(2, '0');
+  return '${now.year}${pad(now.month)}${pad(now.day)}_'
+      '${pad(now.hour)}${pad(now.minute)}${pad(now.second)}';
 }
