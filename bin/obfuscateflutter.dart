@@ -93,7 +93,7 @@ Future<void> _readTaskAndDo(
   11.iOS 项目文件名替换
   12.iOS 内部函数换名
 
-  x.在临时生成目录中进行执行上述混淆任务''');
+  x.在临时生成目录中执行上述混淆任务（除恢复 String）''');
   print('输入要运行的任务：');
   var task = stdin.readLineSync();
 
@@ -160,14 +160,10 @@ Future<void> _readTaskAndDo(
       }
     case "x":
       {
-        changeToTempDirAndRun(projectPath, pubSpaceName,
+        await changeToTempDirAndRun(projectPath, pubSpaceName,
             (projectPathNew) async {
-          _runChangeImageMd5(projectPathNew);
-          await _proguadImageNameAndClean(projectPathNew);
-          _runGenAndroidProguardDict(projectPathNew);
-          _runUnifiedObfuscation(projectPathNew);
+          await _runAllObfuscationSteps(projectPathNew);
           print('!!!混淆任务已经完成!!!');
-          deleteTempProject(projectPathNew);
         });
         break;
       }
@@ -231,6 +227,22 @@ _runAndroidNoiseGeneration(String projectPath) {
   print('do android noise generation');
   runAndroidNoiseGeneration(projectPath);
   print('do android noise generation finished');
+}
+
+Future<void> _runAllObfuscationSteps(String projectPath) async {
+  print('start all obfuscation steps in temp project');
+  _runChangeImageMd5(projectPath);
+  await _proguadImageNameAndClean(projectPath);
+  _runGenAndroidProguardDict(projectPath);
+  _encrypetString(projectPath);
+  _runUnifiedObfuscation(projectPath);
+  _runDartNoiseObfuscation(projectPath);
+  _runClassInnerNoiseObfuscation(projectPath);
+  _runAndroidNoiseGeneration(projectPath);
+  await _runIosNoiseObfuscation(projectPath);
+  await _runIosFileRename(projectPath);
+  await _runIosFunctionRename(projectPath);
+  print('all obfuscation steps finished in temp project');
 }
 
 Future<void> _runIosNoiseObfuscation(String projectPath) async {

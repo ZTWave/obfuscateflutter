@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:image/image.dart' as img;
+import 'package:obfuscateflutter/html_mapping_writer.dart';
 import 'package:obfuscateflutter/log.dart';
 import 'package:path/path.dart' as p;
 
@@ -288,10 +289,11 @@ void runAndroidNoiseGeneration(String projectPath) {
         )
       : _AndroidDeepObfuscationResult.empty();
 
-  final mappingPath =
-      p.join(projectPath, 'android_noise_mapping_${_timestamp()}.json');
-  File(mappingPath).writeAsStringSync(
-    const JsonEncoder.withIndent('  ').convert({
+  final mappingPath = writeHtmlFeatureMapping(
+    projectPath: projectPath,
+    featureId: 'android_noise',
+    featureTitle: 'Android项目垃圾代码生成',
+    mapping: {
       'generated_at': DateTime.now().toIso8601String(),
       'config': config.toJson(),
       'config_file': config.configSource,
@@ -306,7 +308,7 @@ void runAndroidNoiseGeneration(String projectPath) {
       'reflection_rewrites': deepResult.reflectionRewrites,
       'skipped_items': deepResult.skippedItems,
       'warnings': deepResult.warnings,
-    }),
+    },
   );
 
   Log.log('Android noise generation complete.');
@@ -2327,13 +2329,4 @@ bool _isAndroidResourceName(String value) {
 
 String _posixRelative(String filePath, {required String from}) {
   return p.relative(filePath, from: from).replaceAll(p.separator, '/');
-}
-
-String _timestamp() {
-  final now = DateTime.now();
-  String two(int value) => value.toString().padLeft(2, '0');
-  String three(int value) => value.toString().padLeft(3, '0');
-  return '${now.year}${two(now.month)}${two(now.day)}_'
-      '${two(now.hour)}${two(now.minute)}${two(now.second)}'
-      '${three(now.millisecond)}';
 }

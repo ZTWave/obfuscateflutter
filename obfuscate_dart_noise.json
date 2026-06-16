@@ -1,11 +1,11 @@
 {
-  "pageCount": 100,
-  "classCount": 200,
-  "methodCountPerClass": 10,
+  "pageCount": 24,
+  "classCount": 36,
+  "methodCountPerClass": 8,
   "template": "page_sync_class",
   "outputDir": "lib/dart_noise",
-  "garbageFileCountMin": 100,
-  "garbageFileCountMax": 400,
+  "garbageFileCountMin": 70,
+  "garbageFileCountMax": 90,
   "snippets": [
     "widget_layout_page",
     "sync_math",
@@ -118,20 +118,20 @@
   },
   "classInnerNoise": {
     "enabled": true,
-    "targetRatio": 1.5,
+    "targetRatio": 0.3,
     "executionPolicy": "referenceOnly",
-    "maxTargetLines": 100000,
-    "maxMembersPerClass": 16,
-    "maxHooksPerFile": 30,
+    "maxTargetLines": 3500,
+    "maxMembersPerClass": 10,
+    "maxHooksPerFile": 18,
     "stringNoise": {
       "enabled": true,
       "memberStringCountPerClass": [
-        2,
-        10
+        1,
+        6
       ],
       "localStringCountPerHook": [
         0,
-        5
+        3
       ],
       "minLength": 6,
       "maxLength": 96,
@@ -235,10 +235,10 @@
   "androidNoise": {
     "enabled": true,
     "componentCount": {
-      "activity": 10,
-      "service": 8,
-      "receiver": 7,
-      "provider": 5
+      "activity": 8,
+      "service": 6,
+      "receiver": 5,
+      "provider": 3
     },
     "packageSegment": "platform",
     "nameTemplates": {
@@ -986,9 +986,9 @@
   },
   "iosNoise": {
     "enabled": true,
-    "targetRatio": 0.4,
-    "maxTargetLines": 20000,
-    "maxInsertionsPerFile": 20,
+    "targetRatio": 1.0,
+    "maxTargetLines": 1000,
+    "maxInsertionsPerFile": 30,
     "astFallback": "skip",
     "skipFiles": [
       "**/Pods/**",

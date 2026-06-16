@@ -49,7 +49,9 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 | `8` | 类内垃圾代码注入 | 向已有类内部插入垃圾成员和轻量 hook；必要时补 import；输出类内注入映射文档。 | 在不额外链接独立工具文件的前提下，让已有业务类产生差异。 |
 | `9` | Android 项目垃圾代码生成 | 在 `android/app/src/main/java` 下生成 Java 四大组件类；生成 XML/PNG 资源；向 Manifest 注册组件；输出映射文档。 | 让 Android 侧无业务调用的组件和资源在打包后保留。 |
 | `10` | iOS Object-C/Swift AST 混淆 | 使用 `xcrun clang/swiftc` 读取 iOS 原生源码结构，在安全方法体内插入 OC/Swift 模板垃圾代码并输出映射文档。 | 让 iOS 侧 Objective-C/Swift 源码产生可追踪差异，同时保持业务逻辑和公开符号稳定。 |
-| `x` | 临时目录执行混淆并打包 | 复制项目到临时目录，依次执行图片 MD5、图片名处理、Proguard 字典、统一混淆，再按选择打包，最后把产物复制回原项目。 | 希望原项目源码保持干净，只拿混淆构建产物。 |
+| `x` | 临时目录执行混淆 | 复制项目到临时目录，依次执行主要混淆步骤（除恢复 String），完成后可选择删除临时目录。 | 希望原项目源码保持干净，只在临时副本中生成混淆结果。 |
+
+从功能 6 开始，所有会输出映射的功能都会写入同一个固定文件：`obfuscation_mapping.html`。该 HTML 按“功能 -> mapping”分区展示，每个功能区块内部保留原 mapping 的完整字段内容；重复执行同一功能会更新该功能区块，不再生成带时间戳的 JSON 映射文件。
 
 ## 功能说明
 
@@ -133,7 +135,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 - 重命名 Dart 文件，保留 `main.dart` 文件名。
 - 使用 AST 重写 import/export/part 中的 URI。
 - 修正同目录 `.g.dart/.freezed.dart` 中的 `part of 'old.dart';`。
-- 输出 `obfuscation_mapping_<timestamp>.json`。
+- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“统一混淆”区块。
 
 映射文档记录：
 
@@ -153,7 +155,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 - 生成页面类、同步 worker 类和 shard 工具函数。
 - 垃圾文件会尽量分散到项目已有目录和随机目录中，避免单一固定目录特征。
 - 同一个 shard 文件内部会轮换不同函数模板，避免一整个文件重复同一种函数结构。
-- 输出 `dart_noise_mapping_<timestamp>.json`。
+- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“Dart 随机代码注入/保留”区块。
 
 映射文档记录：
 
@@ -174,7 +176,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 - hook 插入到普通 block-bodied 方法或安全的非 const 构造函数内部。
 - 每次插入会随机化成员名、局部变量名、seed、分支和表达式，避免完全复制。
 - 必要时只追加缺失 import，并保留已有 import 的 `show/hide/as` 子句。
-- 输出 `class_inner_noise_mapping_<timestamp>.json`。
+- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“类内垃圾代码注入”区块。
 
 会跳过：
 
@@ -436,7 +438,7 @@ String 模板只能是普通文本，不允许换行、分号、`import`、`part
 - 默认资源名使用可读业务词，例如 `activity_panel.xml`、`session_marker.xml`、`profile_badge.png`，避免 `noise/obf` 这类特征字段。
 - Manifest 使用 `<!-- obfuscateflutter: android-noise start/end -->` 标记，重复执行会替换旧区块，不会重复注册。
 - 可选开启 `deepObfuscation`，对 Android 自有 package、class、resource 名称做更深的业务语义伪装。
-- 输出 `android_noise_mapping_<timestamp>.json`，记录生成类、资源、Manifest 注入项、深度重命名、跳过项和配置来源。
+- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“Android 项目垃圾代码生成”区块，记录生成类、资源、Manifest 注入项、深度重命名、跳过项和配置来源。
 
 默认 Java 类名和方法名会使用业务语义词，例如 `AnalyticsSessionActivity`、`PaymentRouteService`、`collectSessionSignal`。可以通过配置模板调整：
 
@@ -579,7 +581,7 @@ XML 资源模板支持占位符：
 - 默认不改类名、方法签名、文件名、公开 API、import 或业务语句顺序。
 - 插入代码不再输出 `obfuscateflutter: ios-noise` 注释；重复执行时仍会跳过已包含旧 marker，或命中同语言模板组任意 `dedupePatterns` 的方法体，避免重复注入。
 - 成功写入源码后会尝试格式化被修改的文件：Objective-C/Objective-C++ 使用 `xcrun clang-format -i`，Swift 使用 `xcrun swift-format format --in-place`；格式化工具不可用时不会中断混淆。
-- 输出 `ios_noise_mapping_<timestamp>.json`，记录 AST 命令、格式化命令、扫描文件、注入点、模板、跳过原因和汇总统计。
+- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“iOS Object-C/Swift AST 混淆”区块，记录 AST 命令、格式化命令、扫描文件、注入点、模板、跳过原因和汇总统计。
 
 常用配置：
 
@@ -654,7 +656,7 @@ XML 资源模板支持占位符：
 - 默认跳过 `Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
 - 只改文件名和文件名引用，不改 Objective-C/Swift 类名、方法名、公开 API 或业务逻辑。
 - 更新 `#import "OldName.h"`、`#include "OldName.h"`、`#import <.../OldName.h>`、完整文件名字符串和 `project.pbxproj` 文件引用。
-- 输出 `ios_file_rename_mapping_<timestamp>.json`，记录文件重命名、跳过项、重写文件、静态校验和 `xcodebuild -list` 校验结果。
+- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“iOS 项目文件名替换”区块，记录文件重命名、跳过项、重写文件、静态校验和 `xcodebuild -list` 校验结果。
 
 常用配置：
 
@@ -698,7 +700,7 @@ XML 资源模板支持占位符：
 - Swift：`private func`、`fileprivate func`、`private static func`、`fileprivate static func`。
 - 默认跳过 `Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
 - 不改 `.h` 公开 Objective-C 方法，不改公开 Swift 函数，不改 `@objc` / `@IBAction` Swift 方法，不改 `main`、`init*`、`set*`、常见生命周期方法、协议/SDK 回调和融云等消息类型固定 selector（如 `getObjectName`、`persistentFlag`）。
-- 输出 `ios_function_rename_mapping_<timestamp>.json`，记录函数换名、跳过项、重写文件、静态校验和 `xcodebuild -list` 校验结果。
+- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“iOS 内部函数换名”区块，记录函数换名、跳过项、重写文件、静态校验和 `xcodebuild -list` 校验结果。
 
 常用配置：
 
@@ -767,5 +769,5 @@ flutter build apk --release
 - 功能2当前使用字符串匹配处理图片引用，动态拼接资源路径需要人工复核。
 - 功能4和功能6使用 analyzer AST，稳定性高于纯字符串替换，但仍建议混淆后跑 `dart analyze`。
 - 功能7/8/9/10 会增加源码体积，配置过大可能拉长分析和构建时间。
-- 功能11/12 会直接修改 iOS 源码引用；建议先提交当前代码或在临时目录中执行，再用 mapping 文件复核结果。
+- 功能11/12 会直接修改 iOS 源码引用；建议先提交当前代码或在临时目录中执行，再用 `obfuscation_mapping.html` 复核结果。
 - 商店审核、重复包识别并不只看代码和资源字节特征，还会综合产品功能、UI、账号、证书、包名、后端、素材来源等多维信息。本工具只能帮助改变工程层面的部分静态特征，不能保证规避任何审核判定。

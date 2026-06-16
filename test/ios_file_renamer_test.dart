@@ -5,6 +5,8 @@ import 'package:obfuscateflutter/ios_file_renamer.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import 'mapping_test_utils.dart';
+
 void main() {
   test('renames iOS source files and rewrites project references', () async {
     final projectDir = _createIosProject();
@@ -14,12 +16,7 @@ void main() {
       processRunner: _successfulXcodebuild,
     );
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) =>
-              p.basename(file.path).startsWith('ios_file_rename_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'ios_file_rename');
     final fileRenames = (mapping['file_renames'] as Map<String, dynamic>)
         .cast<String, String>();
 
@@ -119,16 +116,7 @@ void main() {
       projectDir.path,
       processRunner: _successfulXcodebuild,
     );
-    final mappingFiles = projectDir
-        .listSync()
-        .whereType<File>()
-        .where((file) =>
-            p.basename(file.path).startsWith('ios_file_rename_mapping_'))
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
-    expect(mappingFiles, hasLength(2));
-    final secondMapping = jsonDecode(mappingFiles.last.readAsStringSync())
-        as Map<String, dynamic>;
+    final secondMapping = readHtmlFeatureMapping(projectDir, 'ios_file_rename');
     expect(secondMapping['file_renames'],
         isNot(contains('ios/Runner/LegacyView.m')));
   });
@@ -150,9 +138,8 @@ void main() {
             .existsSync(),
         isTrue);
     expect(
-      projectDir.listSync().whereType<File>().where((file) =>
-          p.basename(file.path).startsWith('ios_file_rename_mapping_')),
-      isEmpty,
+      File(p.join(projectDir.path, 'obfuscation_mapping.html')).existsSync(),
+      isFalse,
     );
   });
 
@@ -193,12 +180,7 @@ void main() {
       processRunner: _successfulXcodebuild,
     );
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) =>
-              p.basename(file.path).startsWith('ios_file_rename_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'ios_file_rename');
     final fileRenames = (mapping['file_renames'] as Map<String, dynamic>)
         .cast<String, String>();
     final newPath = fileRenames['ios/Runner/LegacyOnly.m']!;
@@ -236,12 +218,7 @@ void main() {
       processRunner: _successfulXcodebuild,
     );
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) =>
-              p.basename(file.path).startsWith('ios_file_rename_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'ios_file_rename');
     final rewrittenFiles =
         (mapping['rewritten_files'] as List<dynamic>).cast<String>();
 
@@ -285,12 +262,7 @@ void main() {
       processRunner: _successfulXcodebuild,
     );
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) =>
-              p.basename(file.path).startsWith('ios_file_rename_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'ios_file_rename');
 
     expect(mapping['validation']['static']['passed'], isTrue);
     expect(

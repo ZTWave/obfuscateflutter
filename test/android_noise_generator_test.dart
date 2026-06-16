@@ -6,6 +6,8 @@ import 'package:obfuscateflutter/android_noise_generator.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import 'mapping_test_utils.dart';
+
 void main() {
   test(
       'android noise generation creates manifest-retained components and resources',
@@ -133,11 +135,7 @@ void main() {
     expect(resourceBasenames, everyElement(isNot(contains('obf'))));
     expect(resourceBasenames, everyElement(isNot(contains('noise'))));
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) => p.basename(file.path).startsWith('android_noise_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'android_noise');
     expect(mapping['namespace'], 'com.example.sample');
     expect(mapping['generated_components'], hasLength(4));
     expect(mapping['generated_resources'], isNotEmpty);
@@ -295,11 +293,7 @@ void main() {
       contains('Profile route com.example.sample.platform'),
     );
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) => p.basename(file.path).startsWith('android_noise_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'android_noise');
     expect(
       mapping['generated_resources'],
       contains('src/main/res/values/strings.xml'),
@@ -691,11 +685,7 @@ public final class GeneratedPluginRegistrant {
       isTrue,
     );
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) => p.basename(file.path).startsWith('android_noise_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'android_noise');
     expect(mapping['class_renames'], isNotEmpty);
     expect(mapping['resource_renames'], isNotEmpty);
     expect(mapping['reflection_rewrites'], isNotEmpty);
@@ -795,11 +785,7 @@ public class BillingMoveActivity {}
         File(p.join(drawableDir.path, 'profile_move_badge.xml')).existsSync(),
         isTrue);
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) => p.basename(file.path).startsWith('android_noise_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'android_noise');
     expect(
         mapping['skipped_items'].toString(), contains('BillingKeepActivity'));
     expect(
