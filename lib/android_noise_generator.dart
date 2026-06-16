@@ -1488,8 +1488,12 @@ List<String> _writeXmlResources({
     final buffer = StringBuffer()
       ..writeln('<?xml version="1.0" encoding="utf-8"?>')
       ..writeln('<resources>');
+    final writtenStringNames = <String>{};
     for (var i = 0; i < config.stringValueTemplates.length; i++) {
       final template = config.stringValueTemplates[i];
+      if (!writtenStringNames.add(template.name)) {
+        continue;
+      }
       final value = _renderResourceTemplate(
         template.value,
         namespace: namespace,
@@ -2123,13 +2127,15 @@ List<AndroidStringResourceTemplate> _readStringResourceTemplates(
 ) {
   final value = json[key];
   if (value == null) {
-    return defaults.map(AndroidStringResourceTemplate.fromDefault).toList();
+    return _uniqueStringResourceTemplates(
+      defaults.map(AndroidStringResourceTemplate.fromDefault),
+    );
   }
   if (value is! List || value.isEmpty) {
     throw StateError(
         'androidNoise.resourceTemplates.$key must be a non-empty array.');
   }
-  return value.map((item) {
+  return _uniqueStringResourceTemplates(value.map((item) {
     if (item is! Map<String, dynamic>) {
       throw StateError(
           'androidNoise.resourceTemplates.$key entries must be objects.');
@@ -2148,7 +2154,37 @@ List<AndroidStringResourceTemplate> _readStringResourceTemplates(
       name: name.trim(),
       value: stringValue,
     );
-  }).toList();
+  }));
+}
+
+List<AndroidStringResourceTemplate> _uniqueStringResourceTemplates(
+  Iterable<AndroidStringResourceTemplate> templates,
+) {
+  final usedNames = <String>{};
+  final result = <AndroidStringResourceTemplate>[];
+  for (final template in templates) {
+    final uniqueName = _nextUniqueAndroidResourceName(template.name, usedNames);
+    result.add(AndroidStringResourceTemplate(
+      name: uniqueName,
+      value: template.value,
+    ));
+  }
+  return result;
+}
+
+String _nextUniqueAndroidResourceName(String baseName, Set<String> usedNames) {
+  if (usedNames.add(baseName)) {
+    return baseName;
+  }
+
+  var index = 2;
+  while (true) {
+    final candidate = '${baseName}_$index';
+    if (usedNames.add(candidate)) {
+      return candidate;
+    }
+    index++;
+  }
 }
 
 Map<String, List<String>> _readSourceTemplates(Map<String, dynamic> json) {

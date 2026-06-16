@@ -558,6 +558,41 @@ class Repo {
     );
   });
 
+  test('dart noise custom page templates reject invalid Dart syntax', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_noise_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'customTemplates': {
+        'pageBodies': [
+          {
+            'id': 'bad_page',
+            'body': 'return const Center(child: width: 4);',
+          }
+        ],
+      },
+    }));
+
+    expect(
+      () => DartNoiseConfig.load(projectDir.path),
+      throwsA(isA<StateError>().having(
+        (error) => error.message,
+        'message',
+        contains('invalid Dart syntax'),
+      )),
+    );
+  });
+
   test('dart noise generation injects sync retain hook and mapping', () {
     final projectDir = Directory.systemTemp.createTempSync('obf_noise_test_');
     addTearDown(() {

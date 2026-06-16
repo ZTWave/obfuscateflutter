@@ -300,6 +300,58 @@ void main() {
     );
   });
 
+  test('android noise generation makes duplicate string names unique', () {
+    final projectDir = _createAndroidProject();
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'androidNoise': {
+        'componentCount': {
+          'activity': 1,
+          'service': 0,
+          'receiver': 0,
+          'provider': 0,
+        },
+        'generateResources': {
+          'xml': true,
+          'images': false,
+        },
+        'resourceTemplates': {
+          'stringValues': [
+            {'name': 'user_nickname_cn', 'value': 'first'},
+            {'name': 'user_nickname_cn', 'value': 'second'},
+          ],
+        },
+      },
+    }));
+
+    runAndroidNoiseGeneration(projectDir.path);
+
+    final strings = File(p.join(
+      projectDir.path,
+      'android',
+      'app',
+      'src',
+      'main',
+      'res',
+      'values',
+      'strings.xml',
+    ));
+    final stringsSource = strings.readAsStringSync();
+    expect(
+      RegExp(r'<string name="user_nickname_cn">').allMatches(stringsSource),
+      hasLength(1),
+    );
+    expect(stringsSource, contains('<string name="user_nickname_cn_2">second'));
+
+    final mapping = readHtmlFeatureMapping(projectDir, 'android_noise');
+    final stringValues = ((mapping['config'] as Map)['resourceTemplates']
+        as Map)['stringValues'] as List;
+    expect(
+      stringValues.map((item) => (item as Map)['name']),
+      containsAll(['user_nickname_cn', 'user_nickname_cn_2']),
+    );
+  });
+
   test('android noise generation selects java source from json template lists',
       () {
     final projectDir = _createAndroidProject();

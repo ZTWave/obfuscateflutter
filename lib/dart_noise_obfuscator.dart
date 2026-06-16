@@ -1499,6 +1499,7 @@ List<NoiseTemplate> _readTemplateList(
       throw StateError('customTemplates.$key.body must be a non-empty string.');
     }
     _validateTemplateBody(id, body);
+    _validateTemplateSyntax(id, key, body);
     return NoiseTemplate(id: id, body: body);
   }).toList();
 }
@@ -1764,6 +1765,43 @@ void _validateTemplateBody(String id, String body) {
       throw StateError('custom template $id contains forbidden code: '
           '${pattern.pattern}.');
     }
+  }
+}
+
+void _validateTemplateSyntax(String id, String key, String body) {
+  final rendered = switch (key) {
+    'pageBodies' => _renderTemplate(body, const {
+        'width': '48',
+        'height': '36',
+        'padding': '4',
+      }),
+    'methodBodies' => _renderTemplate(body, const {
+        'salt': '17',
+        'shift': '3',
+      }),
+    _ => body,
+  };
+  final source = switch (key) {
+    'pageBodies' => '''
+Widget __obfTemplate() {
+$rendered
+}
+''',
+    'methodBodies' => '''
+int __obfTemplate(int input, int seed) {
+$rendered
+}
+''',
+    _ => '''
+void __obfTemplate() {
+$rendered
+}
+''',
+  };
+  final parsed = parseString(content: source, throwIfDiagnostics: false);
+  if (parsed.errors.isNotEmpty) {
+    final message = parsed.errors.first.message;
+    throw StateError('custom template $id has invalid Dart syntax: $message');
   }
 }
 

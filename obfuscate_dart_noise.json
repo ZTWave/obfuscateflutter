@@ -635,7 +635,7 @@
           "value": "msg_read_status_{{packageName}}"
         },
         {
-          "name": "user_nickname_cn",
+          "name": "user_nickname_label_cn",
           "value": "用户昵称"
         },
         {
@@ -773,7 +773,7 @@
       },
       {
         "id": "custom_page_aspect_ratio",
-        "body": "return AspectRatio(\n  aspectRatio: 16 / 9,\n  child: Container(\n    width: {{width}},\n    height: {{height}},\n    decoration: BoxDecoration(\n      color: const Color(0xFF2D2D2D),\n      borderRadius: BorderRadius.circular({{padding}}),\n    ),\n    child: Stack(\n      children: [\n        Center(\n          child: Container(\n            width: {{padding}} * 3,\n            height: {{padding}} * 3,\n            decoration: BoxDecoration(\n              shape: BoxShape.circle,\n              border: Border.all(\n                color: const Color(0xCCFFFFFF),\n                width: 2,\n              ),\n            ),\n            child: const Center(\n      child:  width: 4, \n height: 4, \n   child: DecoratedBox(decoration: BoxDecoration(color: Color(0xFFFFFFFF),shape: BoxShape.circle,),),\n          ),\n          ),\n        ),\n      ],\n    ),\n  ),\n);"
+        "body": "return AspectRatio(\n  aspectRatio: 16 / 9,\n  child: Container(\n    width: {{width}},\n    height: {{height}},\n    decoration: BoxDecoration(\n      color: const Color(0xFF2D2D2D),\n      borderRadius: BorderRadius.circular({{padding}}),\n    ),\n    child: Stack(\n      children: [\n        Center(\n          child: Container(\n            width: {{padding}} * 3,\n            height: {{padding}} * 3,\n            decoration: BoxDecoration(\n              shape: BoxShape.circle,\n              border: Border.all(\n                color: const Color(0xCCFFFFFF),\n                width: 2,\n              ),\n            ),\n            child: const Center(\n              child: SizedBox(\n                width: 4,\n                height: 4,\n                child: DecoratedBox(\n                  decoration: BoxDecoration(\n                    color: Color(0xFFFFFFFF),\n                    shape: BoxShape.circle,\n                  ),\n                ),\n              ),\n            ),\n          ),\n        ),\n      ],\n    ),\n  ),\n);"
       },
       {
         "id": "custom_page_fitted_box",
