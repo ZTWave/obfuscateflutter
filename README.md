@@ -1,6 +1,6 @@
 # obfuscateflutter
 
-Flutter 项目混淆辅助工具，支持图片字节扰动、图片资源名清理、Android Proguard 字典生成、Dart 字符串加密、AST 文件/目录重命名、随机 Dart 垃圾文件生成、类内垃圾代码注入、Android 垃圾组件/资源生成、iOS Objective-C/Swift AST 垃圾代码注入，以及常用 release 包构建。
+Flutter 项目混淆辅助工具，支持图片字节扰动、图片资源名清理、Android Proguard 字典生成、Dart 字符串加密、AST 文件/目录重命名、随机 Dart 垃圾文件生成、类内垃圾代码注入、Android 垃圾组件/资源生成、iOS Objective-C/Swift AST 垃圾代码注入、iOS 文件/函数/业务方法体结构化差异改写，以及常用 release 包构建。
 
 已在 macOS / Windows 测试过基础流程。执行混淆前建议先提交代码或复制一份项目，因为大多数功能会直接修改目标项目文件。
 
@@ -32,6 +32,9 @@ dart run ./bin/obfuscateflutter.dart \
 8.类内垃圾代码/字符串注入
 9.Android项目垃圾代码生成
 10.iOS Object-C/Swift AST 混淆
+11.iOS 项目文件名替换
+12.iOS 内部函数换名
+13.iOS 业务代码结构化差异混淆
 x.在临时生成目录中进行执行上述混淆任务并打包
 ```
 
@@ -49,6 +52,9 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 | `8` | 类内垃圾代码注入 | 向已有类内部插入垃圾成员和轻量 hook；必要时补 import；输出类内注入映射文档。 | 在不额外链接独立工具文件的前提下，让已有业务类产生差异。 |
 | `9` | Android 项目垃圾代码生成 | 在 `android/app/src/main/java` 下生成 Java 四大组件类；生成 XML/PNG 资源；向 Manifest 注册组件；输出映射文档。 | 让 Android 侧无业务调用的组件和资源在打包后保留。 |
 | `10` | iOS Object-C/Swift AST 混淆 | 使用 `xcrun clang/swiftc` 读取 iOS 原生源码结构，在安全方法体内插入 OC/Swift 模板垃圾代码并输出映射文档。 | 让 iOS 侧 Objective-C/Swift 源码产生可追踪差异，同时保持业务逻辑和公开符号稳定。 |
+| `11` | iOS 项目文件名替换 | 重命名项目自有 iOS 源文件并同步更新 Xcode 工程和源码引用。 | 改变 iOS 文件结构特征。 |
+| `12` | iOS 内部函数换名 | 对低风险内部函数、私有 selector 和 Swift private/fileprivate 函数换名。 | 改变内部符号名和调用引用。 |
+| `13` | iOS 业务代码结构化差异混淆 | 对可安全识别的 Objective-C/Swift 业务方法体执行包装跳转、局部抽取和控制流拆分，并输出映射文档。 | 需要改变 iOS 业务代码调用流程和方法体结构。 |
 | `x` | 临时目录执行混淆并打包 | 复制项目到临时目录，依次执行图片 MD5、图片名处理、Proguard 字典、统一混淆，再按选择打包，最后把产物复制回原项目。 | 希望原项目源码保持干净，只拿混淆构建产物。 |
 
 ## 功能说明
@@ -731,6 +737,56 @@ XML 资源模板支持占位符：
 | `iosFunctionRename.semanticWords` | 业务语义词池。 |
 | `iosFunctionRename.kinds` | 函数角色词池。 |
 
+### 13. iOS 业务代码结构化差异混淆
+
+该功能使用 `obfuscate_dart_noise.json` 中的 `iosStructuralDiff` 配置，扫描 `ios` 目录下的 `.m`、`.mm` 和 `.swift` 文件，对可安全识别的业务方法体进行结构化改写。
+
+当前按安全顺序支持三类 transform：
+
+- `wrapDispatch`：保留原业务方法签名，把原方法体移动到新私有 helper，原方法改为调用 helper。
+- `extractBlock`：把无提前退出的连续安全语句块抽到新私有 helper，原位置替换为 helper 调用。
+- `splitControlFlow`：在无提前退出的语句块外加入 deterministic guard，不改变返回值和外部可见行为。
+
+安全边界：
+
+- 默认跳过 `.h`、`Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
+- Objective-C 不改头文件公开 selector。
+- Swift 跳过 `public`、`@objc`、`@IBAction` 方法。
+- 含 `throw`、`break`、`continue`、`defer`、`await` 或无法安全处理的 `return` 的片段会跳过。
+- 文件中已经包含按 `helperNameTemplates` 生成的 helper 名时会跳过，避免重复包裹。
+- 输出 `ios_structural_diff_mapping_<timestamp>.json`，记录扫描文件、改写文件、transform、helper 名称、跳过原因、静态校验和 `xcodebuild -list` 结果。
+
+常用配置：
+
+```json
+{
+  "iosStructuralDiff": {
+    "enabled": true,
+    "skipFiles": [
+      "**/Pods/**",
+      "**/.symlinks/**",
+      "**/Flutter/**",
+      "**/GeneratedPluginRegistrant.*",
+      "**/build/**",
+      "**/*.pbobjc.*"
+    ],
+    "maxTransformsPerFile": 10,
+    "transforms": ["wrapDispatch", "extractBlock", "splitControlFlow"],
+    "helperNameTemplates": ["obfIos{Index}{Kind}", "syncIos{Index}{Kind}"],
+    "validation": "static_xcode_list"
+  }
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `iosStructuralDiff.enabled` | 是否启用 iOS 业务代码结构化差异混淆。 |
+| `iosStructuralDiff.skipFiles` | 跳过文件规则。 |
+| `iosStructuralDiff.maxTransformsPerFile` | 单个文件最多改写的方法数。 |
+| `iosStructuralDiff.transforms` | 启用的 transform 列表，支持 `wrapDispatch`、`extractBlock`、`splitControlFlow`。 |
+| `iosStructuralDiff.helperNameTemplates` | 新 helper 名模板；支持 `{Index}` 和 `{Kind}`。 |
+| `iosStructuralDiff.validation` | 验证级别；当前支持 `static_xcode_list`。 |
+
 ## 建议流程
 
 需要直接改项目源码时：
@@ -747,6 +803,7 @@ XML 资源模板支持占位符：
 10 iOS Object-C/Swift AST 混淆
 11 iOS 项目文件名替换
 12 iOS 内部函数换名
+13 iOS 业务代码结构化差异混淆
 按需执行构建/打包
 ```
 
@@ -767,5 +824,5 @@ flutter build apk --release
 - 功能2当前使用字符串匹配处理图片引用，动态拼接资源路径需要人工复核。
 - 功能4和功能6使用 analyzer AST，稳定性高于纯字符串替换，但仍建议混淆后跑 `dart analyze`。
 - 功能7/8/9/10 会增加源码体积，配置过大可能拉长分析和构建时间。
-- 功能11/12 会直接修改 iOS 源码引用；建议先提交当前代码或在临时目录中执行，再用 mapping 文件复核结果。
+- 功能11/12/13 会直接修改 iOS 源码引用；建议先提交当前代码或在临时目录中执行，再用 mapping 文件复核结果。
 - 商店审核、重复包识别并不只看代码和资源字节特征，还会综合产品功能、UI、账号、证书、包名、后端、素材来源等多维信息。本工具只能帮助改变工程层面的部分静态特征，不能保证规避任何审核判定。

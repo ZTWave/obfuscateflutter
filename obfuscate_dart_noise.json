@@ -1074,5 +1074,28 @@
         "body": "var obfIosGuard{{index}} = {{seed}} + {{index}}\nif obfIosGuard{{index}} >= 0 {\n  obfIosGuard{{index}} = (obfIosGuard{{index}} * 31) % 9973\n} else {\n  obfIosGuard{{index}} = 0\n}"
       }
     ]
+  },
+  "iosStructuralDiff": {
+    "enabled": true,
+    "skipFiles": [
+      "**/Pods/**",
+      "**/.symlinks/**",
+      "**/Flutter/**",
+      "**/GeneratedPluginRegistrant.*",
+      "**/build/**",
+      "**/*.pbobjc.*"
+    ],
+    "maxTransformsPerFile": 10,
+    "transforms": [
+      "wrapDispatch",
+      "extractBlock",
+      "splitControlFlow"
+    ],
+    "helperNameTemplates": [
+      "obfIos{Index}{Kind}",
+      "syncIos{Index}{Kind}",
+      "bridgeIos{Index}{Kind}"
+    ],
+    "validation": "static_xcode_list"
   }
 }

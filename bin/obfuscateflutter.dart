@@ -11,6 +11,7 @@ import 'package:obfuscateflutter/img_change_md5.dart';
 import 'package:obfuscateflutter/ios_file_renamer.dart';
 import 'package:obfuscateflutter/ios_function_renamer.dart';
 import 'package:obfuscateflutter/ios_noise_obfuscator.dart';
+import 'package:obfuscateflutter/ios_structural_diff_obfuscator.dart';
 import 'package:obfuscateflutter/preflight_checker.dart';
 import 'package:obfuscateflutter/proguard_images.dart';
 import 'package:obfuscateflutter/temp_proj_utils.dart';
@@ -92,6 +93,7 @@ Future<void> _readTaskAndDo(
   10.iOS Object-C/Swift AST 混淆
   11.iOS 项目文件名替换
   12.iOS 内部函数换名
+  13.iOS 业务代码结构化差异混淆
 
   x.在临时生成目录中进行执行上述混淆任务''');
   print('输入要运行的任务：');
@@ -156,6 +158,11 @@ Future<void> _readTaskAndDo(
     case "12":
       {
         await _runIosFunctionRename(projectPath);
+        break;
+      }
+    case "13":
+      {
+        await _runIosStructuralDiffObfuscation(projectPath);
         break;
       }
     case "x":
@@ -249,6 +256,12 @@ Future<void> _runIosFunctionRename(String projectPath) async {
   print('do ios function rename');
   await runIosFunctionRename(projectPath);
   print('do ios function rename finished');
+}
+
+Future<void> _runIosStructuralDiffObfuscation(String projectPath) async {
+  print('do ios structural diff obfuscation');
+  await runIosStructuralDiffObfuscation(projectPath);
+  print('do ios structural diff obfuscation finished');
 }
 
 final parser = ArgParser(allowTrailingOptions: true)

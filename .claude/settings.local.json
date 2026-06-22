@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/mac/.pub-cache/hosted/pub.flutter-io.cn/image-4.8.0/lib/src/formats/**)",
+      "Read(//Users/mac/dev/project/**)",
+      "Bash(flutter create *)",
+      "Bash(dart run *)"
+    ]
+  }
+}
