@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:obfuscateflutter/html_mapping_writer.dart';
 import 'package:obfuscateflutter/log.dart';
 import 'package:obfuscateflutter/random_key.dart';
 import 'package:obfuscateflutter/utils/obfuscation_mapping.dart';
@@ -201,9 +202,12 @@ void runUnifiedObfuscation(String projectPath) {
 
   // ── 8. Write mapping document ────────────────────────────────────
   final mapping = mappingBuilder.build();
-  final mappingPath =
-      p.join(projectPath, 'obfuscation_mapping_${_timestamp()}.json');
-  mapping.writeToFile(mappingPath);
+  final mappingPath = writeHtmlFeatureMapping(
+    projectPath: projectPath,
+    featureId: 'unified_obfuscation',
+    featureTitle: '统一混淆',
+    mapping: mapping.toJson(),
+  );
 
   Log.log('');
   Log.log('Unified obfuscation complete.');
@@ -285,11 +289,3 @@ Map<String, String> _buildFileMappings(
 
   return fileMappings;
 }
-
-String _timestamp() {
-  final now = DateTime.now();
-  return '${now.year}${_pad(now.month)}${_pad(now.day)}_'
-      '${_pad(now.hour)}${_pad(now.minute)}${_pad(now.second)}';
-}
-
-String _pad(int n) => n.toString().padLeft(2, '0');

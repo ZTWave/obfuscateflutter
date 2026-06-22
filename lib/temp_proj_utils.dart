@@ -27,11 +27,65 @@ changeToTempDirAndRun(String baseProject, String pubSpaceName,
   print("temp ${temp.path} created!");
   print("statrt copy project to temp path...");
 
-  await copy(baseProject, tempPath);
+  await copyProjectToTemp(baseProject, tempPath);
 
   String newProjectPath = tempPath;
 
   await launcher(newProjectPath);
+}
+
+Future<void> copyProjectToTemp(String baseProject, String tempPath) async {
+  print("run project copy from $baseProject to $tempPath");
+  final source = Directory(baseProject);
+  final target = Directory(tempPath);
+  if (!source.existsSync()) {
+    throw StateError('Source project does not exist: $baseProject');
+  }
+  if (!target.existsSync()) {
+    target.createSync(recursive: true);
+  }
+
+  for (final entity in source.listSync(followLinks: false)) {
+    await _copyEntityToTemp(
+        entity, p.join(target.path, p.basename(entity.path)));
+  }
+  print("project copy finished.");
+}
+
+Future<void> _copyEntityToTemp(
+    FileSystemEntity entity, String targetPath) async {
+  if (p.basename(entity.path) == '.git') {
+    return;
+  }
+
+  if (entity is Directory) {
+    final targetDir = Directory(targetPath);
+    if (!targetDir.existsSync()) {
+      targetDir.createSync(recursive: true);
+    }
+    for (final child in entity.listSync(followLinks: false)) {
+      await _copyEntityToTemp(
+          child, p.join(targetDir.path, p.basename(child.path)));
+    }
+    return;
+  }
+
+  if (entity is File) {
+    final parent = Directory(p.dirname(targetPath));
+    if (!parent.existsSync()) {
+      parent.createSync(recursive: true);
+    }
+    await entity.copy(targetPath);
+    return;
+  }
+
+  if (entity is Link) {
+    final parent = Directory(p.dirname(targetPath));
+    if (!parent.existsSync()) {
+      parent.createSync(recursive: true);
+    }
+    await Link(targetPath).create(entity.targetSync());
+  }
 }
 
 transOutputTo(String baseProjectPath, String tempProjectPath,

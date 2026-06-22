@@ -6,6 +6,8 @@ import 'package:obfuscateflutter/dart_noise_obfuscator.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import 'mapping_test_utils.dart';
+
 void main() {
   test('class inner noise injects reachable members and required imports', () {
     final projectDir = Directory.systemTemp.createTempSync('obf_inner_test_');
@@ -107,12 +109,7 @@ class SampleApp extends StatelessWidget {
     expect(source, contains('final obfNoise'));
     expect(parseString(content: source).errors, isEmpty);
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) =>
-              p.basename(file.path).startsWith('class_inner_noise_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'class_inner_noise');
     expect(mapping['actual_added_lines'], greaterThan(0));
     expect(mapping['imports_added'], contains('dart:async as obf_async'));
     expect(mapping['imports_added'], contains('dart:io as obf_io'));
@@ -504,12 +501,7 @@ class Repo {
     expect(source, contains('return normalized.toUpperCase();'));
     expect(parseString(content: source).errors, isEmpty);
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-          (file) =>
-              p.basename(file.path).startsWith('class_inner_noise_mapping_'),
-        );
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'class_inner_noise');
     expect(mapping['string_templates_used'], contains('readable_trace'));
     final stringsInjected =
         (mapping['strings_injected'] as List<dynamic>).cast<dynamic>();
@@ -566,6 +558,41 @@ class Repo {
     );
   });
 
+  test('dart noise custom page templates reject invalid Dart syntax', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_noise_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'pageCount': 1,
+      'classCount': 1,
+      'methodCountPerClass': 1,
+      'template': 'page_sync_class',
+      'outputDir': 'lib/dart_noise',
+      'customTemplates': {
+        'pageBodies': [
+          {
+            'id': 'bad_page',
+            'body': 'return const Center(child: width: 4);',
+          }
+        ],
+      },
+    }));
+
+    expect(
+      () => DartNoiseConfig.load(projectDir.path),
+      throwsA(isA<StateError>().having(
+        (error) => error.message,
+        'message',
+        contains('invalid Dart syntax'),
+      )),
+    );
+  });
+
   test('dart noise generation injects sync retain hook and mapping', () {
     final projectDir = Directory.systemTemp.createTempSync('obf_noise_test_');
     addTearDown(() {
@@ -605,14 +632,7 @@ class SampleApp extends StatelessWidget {
 
     runDartNoiseObfuscation(projectDir.path);
 
-    final firstMappingFiles = projectDir
-        .listSync()
-        .whereType<File>()
-        .where(
-            (file) => p.basename(file.path).startsWith('dart_noise_mapping_'))
-        .toList();
-    final firstMapping = jsonDecode(firstMappingFiles.single.readAsStringSync())
-        as Map<String, dynamic>;
+    final firstMapping = readHtmlFeatureMapping(projectDir, 'dart_noise');
     final generatedFiles =
         (firstMapping['generated_files'] as List<dynamic>).cast<String>();
     final generatedSources = generatedFiles.map((generatedPath) {
@@ -662,16 +682,7 @@ class SampleApp extends StatelessWidget {
       1,
     );
 
-    final mappingFiles = projectDir
-        .listSync()
-        .whereType<File>()
-        .where(
-            (file) => p.basename(file.path).startsWith('dart_noise_mapping_'))
-        .toList()
-      ..sort((a, b) => p.basename(a.path).compareTo(p.basename(b.path)));
-    expect(mappingFiles, isNotEmpty);
-    final mapping = jsonDecode(mappingFiles.last.readAsStringSync())
-        as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'dart_noise');
     expect(mapping['generated_file'], startsWith('lib/'));
     expect(mapping['generated_files'], isNotEmpty);
     expect(mapping['retain_function'], 'obfDartNoiseRetain');
@@ -696,15 +707,7 @@ void main() {}
 
     runDartNoiseObfuscation(projectDir.path);
 
-    final mappingFiles = projectDir
-        .listSync()
-        .whereType<File>()
-        .where(
-            (file) => p.basename(file.path).startsWith('dart_noise_mapping_'))
-        .toList();
-    expect(mappingFiles, hasLength(1));
-    final mapping = jsonDecode(mappingFiles.single.readAsStringSync())
-        as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'dart_noise');
     final generatedFile = File(p.joinAll([
       projectDir.path,
       ...(mapping['generated_file'] as String).split('/'),
@@ -752,15 +755,7 @@ void main() {
 
     runDartNoiseObfuscation(projectDir.path);
 
-    final mappingFiles = projectDir
-        .listSync()
-        .whereType<File>()
-        .where(
-            (file) => p.basename(file.path).startsWith('dart_noise_mapping_'))
-        .toList()
-      ..sort((a, b) => p.basename(a.path).compareTo(p.basename(b.path)));
-    final mapping = jsonDecode(mappingFiles.last.readAsStringSync())
-        as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'dart_noise');
     final generatedFiles =
         (mapping['generated_files'] as List<dynamic>).map((generatedPath) {
       return File(p.joinAll([
@@ -849,15 +844,7 @@ void main() {
 
     runDartNoiseObfuscation(projectDir.path);
 
-    final mappingFiles = projectDir
-        .listSync()
-        .whereType<File>()
-        .where(
-            (file) => p.basename(file.path).startsWith('dart_noise_mapping_'))
-        .toList()
-      ..sort((a, b) => p.basename(a.path).compareTo(p.basename(b.path)));
-    final mapping = jsonDecode(mappingFiles.last.readAsStringSync())
-        as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'dart_noise');
     final allSource =
         (mapping['generated_files'] as List<dynamic>).map((generatedPath) {
       return File(p.joinAll([
@@ -907,14 +894,7 @@ void main() {
 
     runDartNoiseObfuscation(projectDir.path);
 
-    final mappingFiles = projectDir
-        .listSync()
-        .whereType<File>()
-        .where(
-            (file) => p.basename(file.path).startsWith('dart_noise_mapping_'))
-        .toList();
-    final mapping = jsonDecode(mappingFiles.single.readAsStringSync())
-        as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'dart_noise');
     final generatedFiles =
         (mapping['generated_files'] as List<dynamic>).cast<String>();
     expect(generatedFiles, hasLength(7));
@@ -1059,10 +1039,7 @@ void main() {
 
     runDartNoiseObfuscation(projectDir.path);
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-        (file) => p.basename(file.path).startsWith('dart_noise_mapping_'));
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'dart_noise');
     final generatedFiles =
         (mapping['generated_files'] as List<dynamic>).cast<String>();
     expect(
@@ -1130,10 +1107,7 @@ void main() {
 
     runDartNoiseObfuscation(projectDir.path);
 
-    final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-        (file) => p.basename(file.path).startsWith('dart_noise_mapping_'));
-    final mapping =
-        jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'dart_noise');
     final generatedFiles =
         (mapping['generated_files'] as List<dynamic>).cast<String>();
     var shardFileCount = 0;

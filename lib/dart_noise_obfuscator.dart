@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:obfuscateflutter/html_mapping_writer.dart';
 import 'package:obfuscateflutter/log.dart';
 import 'package:obfuscateflutter/random_key.dart';
 import 'package:path/path.dart' as p;
@@ -147,8 +148,6 @@ void runClassInnerNoiseObfuscation(String projectPath) {
     hasFlutter: hasFlutter,
   );
 
-  final mappingPath =
-      p.join(projectPath, 'class_inner_noise_mapping_${_timestamp()}.json');
   final mapping = {
     'generated_at': DateTime.now().toIso8601String(),
     'config': innerConfig.toJson(),
@@ -166,8 +165,11 @@ void runClassInnerNoiseObfuscation(String projectPath) {
     'imports_added': result.importsAdded.toList()..sort(),
     'skipped': result.skipped,
   };
-  File(mappingPath).writeAsStringSync(
-    const JsonEncoder.withIndent('  ').convert(mapping),
+  final mappingPath = writeHtmlFeatureMapping(
+    projectPath: projectPath,
+    featureId: 'class_inner_noise',
+    featureTitle: '类内垃圾代码/字符串注入',
+    mapping: mapping,
   );
 
   Log.log('Class inner noise obfuscation complete.');
@@ -206,8 +208,6 @@ void runDartNoiseObfuscation(String projectPath) {
       generated.sources.keys.map((name) => p.posix.join('lib', name)).toList();
   _injectRetainHook(mainFile, importPath);
 
-  final mappingPath =
-      p.join(projectPath, 'dart_noise_mapping_${_timestamp()}.json');
   final mapping = {
     'generated_at': DateTime.now().toIso8601String(),
     'config': config.toJson(),
@@ -221,8 +221,11 @@ void runDartNoiseObfuscation(String projectPath) {
     'methods': generated.methods,
     'snippet_usage': generated.snippetUsage,
   };
-  File(mappingPath).writeAsStringSync(
-    const JsonEncoder.withIndent('  ').convert(mapping),
+  final mappingPath = writeHtmlFeatureMapping(
+    projectPath: projectPath,
+    featureId: 'dart_noise',
+    featureTitle: 'Dart随机代码注入/保留',
+    mapping: mapping,
   );
 
   Log.log('Dart noise obfuscation complete.');
@@ -1496,6 +1499,7 @@ List<NoiseTemplate> _readTemplateList(
       throw StateError('customTemplates.$key.body must be a non-empty string.');
     }
     _validateTemplateBody(id, body);
+    _validateTemplateSyntax(id, key, body);
     return NoiseTemplate(id: id, body: body);
   }).toList();
 }
@@ -1761,6 +1765,43 @@ void _validateTemplateBody(String id, String body) {
       throw StateError('custom template $id contains forbidden code: '
           '${pattern.pattern}.');
     }
+  }
+}
+
+void _validateTemplateSyntax(String id, String key, String body) {
+  final rendered = switch (key) {
+    'pageBodies' => _renderTemplate(body, const {
+        'width': '48',
+        'height': '36',
+        'padding': '4',
+      }),
+    'methodBodies' => _renderTemplate(body, const {
+        'salt': '17',
+        'shift': '3',
+      }),
+    _ => body,
+  };
+  final source = switch (key) {
+    'pageBodies' => '''
+Widget __obfTemplate() {
+$rendered
+}
+''',
+    'methodBodies' => '''
+int __obfTemplate(int input, int seed) {
+$rendered
+}
+''',
+    _ => '''
+void __obfTemplate() {
+$rendered
+}
+''',
+  };
+  final parsed = parseString(content: source, throwIfDiagnostics: false);
+  if (parsed.errors.isNotEmpty) {
+    final message = parsed.errors.first.message;
+    throw StateError('custom template $id has invalid Dart syntax: $message');
   }
 }
 
@@ -2564,15 +2605,4 @@ int _importRank(String spec) {
   if (uri.startsWith('dart:')) return 0;
   if (uri.startsWith('package:')) return 1;
   return 2;
-}
-
-String _timestamp() {
-  final now = DateTime.now();
-  return '${now.year}'
-      '${now.month.toString().padLeft(2, '0')}'
-      '${now.day.toString().padLeft(2, '0')}_'
-      '${now.hour.toString().padLeft(2, '0')}'
-      '${now.minute.toString().padLeft(2, '0')}'
-      '${now.second.toString().padLeft(2, '0')}'
-      '${now.millisecond.toString().padLeft(3, '0')}';
 }

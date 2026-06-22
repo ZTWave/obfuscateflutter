@@ -5,6 +5,8 @@ import 'package:obfuscateflutter/ios_noise_obfuscator.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import 'mapping_test_utils.dart';
+
 void main() {
   group('IosNoiseConfig', () {
     test('loads project config with defaults and template groups', () {
@@ -709,11 +711,7 @@ final class SceneWorker {
       expect(swift, contains('obfIos'));
       expect(header, '@interface Worker\n@end\n');
 
-      final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-            (file) => p.basename(file.path).startsWith('ios_noise_mapping_'),
-          );
-      final mapping =
-          jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+      final mapping = readHtmlFeatureMapping(projectDir, 'ios_noise');
       expect(mapping['files_touched'], contains('ios/Runner/Worker.m'));
       expect(mapping['files_touched'], contains('ios/Runner/Scene.swift'));
       expect(mapping['insertions'], hasLength(greaterThanOrEqualTo(2)));

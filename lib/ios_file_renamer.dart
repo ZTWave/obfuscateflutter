@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:obfuscateflutter/html_mapping_writer.dart';
 import 'package:obfuscateflutter/log.dart';
 import 'package:path/path.dart' as p;
 
@@ -184,8 +185,6 @@ Future<void> runIosFileRename(
     processRunner: processRunner,
   );
 
-  final mappingPath =
-      p.join(projectPath, 'ios_file_rename_mapping_${_timestamp()}.json');
   final mapping = {
     'generated_at': DateTime.now().toIso8601String(),
     'config': config.toJson(),
@@ -201,8 +200,11 @@ Future<void> runIosFileRename(
       'skipped': skipped.length,
     },
   };
-  File(mappingPath).writeAsStringSync(
-    const JsonEncoder.withIndent('  ').convert(mapping),
+  final mappingPath = writeHtmlFeatureMapping(
+    projectPath: projectPath,
+    featureId: 'ios_file_rename',
+    featureTitle: 'iOS 项目文件名替换',
+    mapping: mapping,
   );
 
   final staticPassed =
@@ -592,13 +594,4 @@ bool _globMatches(String pattern, String path) {
 
 String _relative(String projectPath, String fullPath) {
   return p.relative(fullPath, from: projectPath).replaceAll(p.separator, '/');
-}
-
-String _timestamp() {
-  final now = DateTime.now();
-  String two(int value) => value.toString().padLeft(2, '0');
-  String three(int value) => value.toString().padLeft(3, '0');
-  return '${now.year}${two(now.month)}${two(now.day)}_'
-      '${two(now.hour)}${two(now.minute)}${two(now.second)}_'
-      '${three(now.millisecond)}';
 }

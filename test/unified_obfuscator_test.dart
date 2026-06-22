@@ -1,9 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:obfuscateflutter/unified_obfuscator.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
+
+import 'mapping_test_utils.dart';
 
 void main() {
   test('unified obfuscation renames files without encrypting strings', () {
@@ -87,16 +88,7 @@ class StepTracker {}
     expect(allSource, contains("part of '"));
     expect(allSource, isNot(contains("part of 'home_page.dart';")));
 
-    final mappingFiles = projectDir
-        .listSync()
-        .whereType<File>()
-        .where(
-            (file) => p.basename(file.path).startsWith('obfuscation_mapping_'))
-        .toList();
-    expect(mappingFiles, hasLength(1));
-
-    final mapping = jsonDecode(mappingFiles.single.readAsStringSync())
-        as Map<String, dynamic>;
+    final mapping = readHtmlFeatureMapping(projectDir, 'unified_obfuscation');
     expect(mapping, isNot(contains('string_encryption')));
     expect(mapping['file_renames'],
         containsPair('features/home/home_page.dart', anything));

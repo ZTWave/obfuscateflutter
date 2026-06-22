@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:image/image.dart' as img;
+import 'package:obfuscateflutter/html_mapping_writer.dart';
 import 'package:obfuscateflutter/log.dart';
 import 'package:path/path.dart' as p;
 
@@ -288,10 +289,11 @@ void runAndroidNoiseGeneration(String projectPath) {
         )
       : _AndroidDeepObfuscationResult.empty();
 
-  final mappingPath =
-      p.join(projectPath, 'android_noise_mapping_${_timestamp()}.json');
-  File(mappingPath).writeAsStringSync(
-    const JsonEncoder.withIndent('  ').convert({
+  final mappingPath = writeHtmlFeatureMapping(
+    projectPath: projectPath,
+    featureId: 'android_noise',
+    featureTitle: 'Android项目垃圾代码生成',
+    mapping: {
       'generated_at': DateTime.now().toIso8601String(),
       'config': config.toJson(),
       'config_file': config.configSource,
@@ -306,7 +308,7 @@ void runAndroidNoiseGeneration(String projectPath) {
       'reflection_rewrites': deepResult.reflectionRewrites,
       'skipped_items': deepResult.skippedItems,
       'warnings': deepResult.warnings,
-    }),
+    },
   );
 
   Log.log('Android noise generation complete.');
@@ -1486,8 +1488,12 @@ List<String> _writeXmlResources({
     final buffer = StringBuffer()
       ..writeln('<?xml version="1.0" encoding="utf-8"?>')
       ..writeln('<resources>');
+    final writtenStringNames = <String>{};
     for (var i = 0; i < config.stringValueTemplates.length; i++) {
       final template = config.stringValueTemplates[i];
+      if (!writtenStringNames.add(template.name)) {
+        continue;
+      }
       final value = _renderResourceTemplate(
         template.value,
         namespace: namespace,
@@ -2121,13 +2127,15 @@ List<AndroidStringResourceTemplate> _readStringResourceTemplates(
 ) {
   final value = json[key];
   if (value == null) {
-    return defaults.map(AndroidStringResourceTemplate.fromDefault).toList();
+    return _uniqueStringResourceTemplates(
+      defaults.map(AndroidStringResourceTemplate.fromDefault),
+    );
   }
   if (value is! List || value.isEmpty) {
     throw StateError(
         'androidNoise.resourceTemplates.$key must be a non-empty array.');
   }
-  return value.map((item) {
+  return _uniqueStringResourceTemplates(value.map((item) {
     if (item is! Map<String, dynamic>) {
       throw StateError(
           'androidNoise.resourceTemplates.$key entries must be objects.');
@@ -2146,7 +2154,37 @@ List<AndroidStringResourceTemplate> _readStringResourceTemplates(
       name: name.trim(),
       value: stringValue,
     );
-  }).toList();
+  }));
+}
+
+List<AndroidStringResourceTemplate> _uniqueStringResourceTemplates(
+  Iterable<AndroidStringResourceTemplate> templates,
+) {
+  final usedNames = <String>{};
+  final result = <AndroidStringResourceTemplate>[];
+  for (final template in templates) {
+    final uniqueName = _nextUniqueAndroidResourceName(template.name, usedNames);
+    result.add(AndroidStringResourceTemplate(
+      name: uniqueName,
+      value: template.value,
+    ));
+  }
+  return result;
+}
+
+String _nextUniqueAndroidResourceName(String baseName, Set<String> usedNames) {
+  if (usedNames.add(baseName)) {
+    return baseName;
+  }
+
+  var index = 2;
+  while (true) {
+    final candidate = '${baseName}_$index';
+    if (usedNames.add(candidate)) {
+      return candidate;
+    }
+    index++;
+  }
 }
 
 Map<String, List<String>> _readSourceTemplates(Map<String, dynamic> json) {
@@ -2327,13 +2365,4 @@ bool _isAndroidResourceName(String value) {
 
 String _posixRelative(String filePath, {required String from}) {
   return p.relative(filePath, from: from).replaceAll(p.separator, '/');
-}
-
-String _timestamp() {
-  final now = DateTime.now();
-  String two(int value) => value.toString().padLeft(2, '0');
-  String three(int value) => value.toString().padLeft(3, '0');
-  return '${now.year}${two(now.month)}${two(now.day)}_'
-      '${two(now.hour)}${two(now.minute)}${two(now.second)}'
-      '${three(now.millisecond)}';
 }

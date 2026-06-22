@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:obfuscateflutter/html_mapping_writer.dart';
 import 'package:obfuscateflutter/log.dart';
 import 'package:path/path.dart' as p;
 
@@ -510,10 +511,11 @@ Future<void> runIosNoiseObfuscation(String projectPath) async {
     }
   }
 
-  final mappingPath =
-      p.join(projectPath, 'ios_noise_mapping_${_timestamp()}.json');
-  File(mappingPath).writeAsStringSync(
-    const JsonEncoder.withIndent('  ').convert({
+  final mappingPath = writeHtmlFeatureMapping(
+    projectPath: projectPath,
+    featureId: 'ios_noise',
+    featureTitle: 'iOS Object-C/Swift AST 混淆',
+    mapping: {
       'generated_at': DateTime.now().toIso8601String(),
       'config': config.toJson(),
       'config_file': config.configSource,
@@ -529,7 +531,7 @@ Future<void> runIosNoiseObfuscation(String projectPath) async {
         'insertions': insertions.length,
         'added_lines': addedLines,
       },
-    }),
+    },
   );
 
   Log.log('iOS noise obfuscation complete.');
@@ -1185,11 +1187,4 @@ int _countProcessableLines(List<IosSourceFile> files) {
         .length;
   }
   return count;
-}
-
-String _timestamp() {
-  final now = DateTime.now();
-  String pad(int value) => value.toString().padLeft(2, '0');
-  return '${now.year}${pad(now.month)}${pad(now.day)}_'
-      '${pad(now.hour)}${pad(now.minute)}${pad(now.second)}';
 }

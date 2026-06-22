@@ -5,6 +5,8 @@ import 'package:obfuscateflutter/ios_function_renamer.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
+import 'mapping_test_utils.dart';
+
 void main() {
   test('renames safe ObjC static functions and private selectors', () async {
     final projectDir = _createIosProject();
@@ -237,10 +239,60 @@ static void legacyRun(void) {
 
     expect(sourceFile.readAsStringSync(), contains('legacyRun'));
     expect(
-      projectDir.listSync().whereType<File>().where((file) =>
-          p.basename(file.path).startsWith('ios_function_rename_mapping_')),
-      isEmpty,
+      File(p.join(projectDir.path, 'obfuscation_mapping.html')).existsSync(),
+      isFalse,
     );
+  });
+
+  test('generates unique names when template word pools are exhausted',
+      () async {
+    final projectDir = _createIosProject(config: {
+      'iosFunctionRename': {
+        'enabled': true,
+        'includeExtensions': ['.m'],
+        'nameTemplates': ['handle{Word}{Kind}'],
+        'semanticWords': ['Session'],
+        'kinds': ['State'],
+      }
+    });
+    final sourceFile = File(p.join(
+      projectDir.path,
+      'ios',
+      'Runner',
+      'ManyHelpers.m',
+    ));
+    final buffer = StringBuffer();
+    for (var i = 0; i < 12; i++) {
+      buffer
+        ..writeln('static int legacyHelper$i(int value) {')
+        ..writeln('  return value + $i;')
+        ..writeln('}')
+        ..writeln();
+    }
+    buffer.writeln('int callAllHelpers(void) {');
+    for (var i = 0; i < 12; i++) {
+      buffer.writeln('  legacyHelper$i($i);');
+    }
+    buffer
+      ..writeln('  return 0;')
+      ..writeln('}');
+    sourceFile.writeAsStringSync(buffer.toString());
+
+    await runIosFunctionRename(
+      projectDir.path,
+      processRunner: _successfulXcodebuild,
+    );
+
+    final mapping = _readOnlyMapping(projectDir);
+    final renames = (mapping['function_renames'] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    final newNames = renames.map((entry) => entry['new_name']).toSet();
+
+    expect(renames, hasLength(12));
+    expect(newNames, hasLength(12));
+    expect(newNames, contains('handleSessionState'));
+    expect(newNames, contains('handleSessionState1'));
+    expect(sourceFile.readAsStringSync(), isNot(contains('legacyHelper')));
   });
 }
 
@@ -254,11 +306,7 @@ Future<ProcessResult> _successfulXcodebuild(
 }
 
 Map<String, dynamic> _readOnlyMapping(Directory projectDir) {
-  final mappingFile = projectDir.listSync().whereType<File>().singleWhere(
-        (file) =>
-            p.basename(file.path).startsWith('ios_function_rename_mapping_'),
-      );
-  return jsonDecode(mappingFile.readAsStringSync()) as Map<String, dynamic>;
+  return readHtmlFeatureMapping(projectDir, 'ios_function_rename');
 }
 
 Directory _createIosProject({Map<String, dynamic>? config}) {
