@@ -144,4 +144,27 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test('CLI exposes menu 14 and runs cleanup last in the x pipeline', () {
+    final cli =
+        File(p.join(Directory.current.path, 'bin', 'obfuscateflutter.dart'))
+            .readAsStringSync();
+
+    expect(cli, contains('14.清理 Dart 源码注释'));
+    expect(cli, contains('case "14":'));
+    expect(cli, contains('_runDartCommentCleanup(projectPath);'));
+
+    final pipelineStart = cli.indexOf(
+      'Future<void> _runAllObfuscationSteps(String projectPath)',
+    );
+    final pipelineEnd = cli.indexOf(
+      'Future<void> _runIosNoiseObfuscation',
+      pipelineStart,
+    );
+    final pipeline = cli.substring(pipelineStart, pipelineEnd);
+    expect(
+      pipeline.lastIndexOf('_runDartCommentCleanup(projectPath);'),
+      greaterThan(pipeline.lastIndexOf('_runIosFunctionRename(projectPath)')),
+    );
+  });
 }

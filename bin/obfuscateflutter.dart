@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:obfuscateflutter/android_noise_generator.dart';
 import 'package:obfuscateflutter/cmd_utils.dart';
+import 'package:obfuscateflutter/dart_comment_cleaner.dart';
 import 'package:obfuscateflutter/dart_noise_obfuscator.dart';
 import 'package:obfuscateflutter/encrypt_string.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
@@ -94,6 +95,7 @@ Future<void> _readTaskAndDo(
   11.iOS 项目文件名替换
   12.iOS 内部函数换名
   13.iOS 业务代码结构化差异混淆
+  14.清理 Dart 源码注释
 
   x.在临时生成目录中执行上述混淆任务（除恢复 String）''');
   print('输入要运行的任务：');
@@ -163,6 +165,11 @@ Future<void> _readTaskAndDo(
     case "13":
       {
         await _runIosStructuralDiffObfuscation(projectPath);
+        break;
+      }
+    case "14":
+      {
+        _runDartCommentCleanup(projectPath);
         break;
       }
     case "x":
@@ -236,6 +243,12 @@ _runAndroidNoiseGeneration(String projectPath) {
   print('do android noise generation finished');
 }
 
+void _runDartCommentCleanup(String projectPath) {
+  print('do dart comment cleanup');
+  cleanDartComments(projectPath);
+  print('do dart comment cleanup finished');
+}
+
 Future<void> _runAllObfuscationSteps(String projectPath) async {
   print('start all obfuscation steps in temp project');
   _runChangeImageMd5(projectPath);
@@ -249,6 +262,7 @@ Future<void> _runAllObfuscationSteps(String projectPath) async {
   await _runIosNoiseObfuscation(projectPath);
   await _runIosFileRename(projectPath);
   await _runIosFunctionRename(projectPath);
+  _runDartCommentCleanup(projectPath);
   print('all obfuscation steps finished in temp project');
 }
 
