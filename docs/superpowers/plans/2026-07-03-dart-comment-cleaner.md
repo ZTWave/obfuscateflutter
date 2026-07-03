@@ -17,6 +17,9 @@
 - Do not create backups or a missing `lib` directory.
 - Do not modify a file if cleanup introduces parser diagnostics not present in the original source.
 - Continue after a per-file failure and report the failed relative path and reason.
+- Run `dart format <file>` after writing each successfully cleaned file.
+- Do not format files that contained no comments.
+- Keep cleaned source when formatting fails; record the path, exit code, and stderr without rolling back.
 - Run cleanup last in the `x` pipeline.
 
 ---
@@ -38,6 +41,7 @@
 - Consumes: `parseString({required String content, String? path, bool throwIfDiagnostics = true})`, `writeHtmlFeatureMapping(...)`, and a target Flutter project path.
 - Produces: `DartCommentCleanupResult cleanDartComments(String projectPath)`.
 - Produces: `DartCommentCleanupResult` with `scannedFiles`, `modifiedFiles`, `removedComments`, and `failedFiles`.
+- Produces format statistics through `formattedFiles` and `formatFailedFiles`.
 - Produces mapping feature id `dart_comment_cleanup` and title `Dart 源码注释清理`.
 
 - [ ] **Step 1: Write failing tests for complete and safe comment removal**
@@ -151,17 +155,42 @@ class DartCommentCleanupResult {
     required this.scannedFiles,
     required this.modifiedFiles,
     required this.removedComments,
+    required this.formattedFiles,
+    required this.formatFailedFiles,
     required this.failedFiles,
   });
 
   final int scannedFiles;
   final int modifiedFiles;
   final int removedComments;
+  final int formattedFiles;
+  final List<DartCommentFormatFailure> formatFailedFiles;
   final List<DartCommentCleanupFailure> failedFiles;
 }
 
 DartCommentCleanupResult cleanDartComments(String projectPath)
 ```
+
+Formatting extension:
+
+```dart
+class DartCommentFormatFailure {
+  const DartCommentFormatFailure({
+    required this.path,
+    required this.exitCode,
+    required this.message,
+  });
+
+  final String path;
+  final int exitCode;
+  final String message;
+}
+```
+
+After `file.writeAsStringSync(updated)`, run
+`Process.runSync(Platform.resolvedExecutable, ['format', file.path])`. Increment
+`formattedFiles` on exit code `0`; otherwise append a
+`DartCommentFormatFailure` and keep the cleaned file unchanged.
 
 Implementation requirements:
 
@@ -183,11 +212,16 @@ final mapping = {
     'scanned_files': scannedFiles,
     'modified_files': modifiedFiles,
     'removed_comments': removedComments,
+    'formatted_files': formattedFiles,
+    'format_failed_files': formatFailedFiles.length,
     'failed_files': failedFiles.length,
   },
   'scanned_files': scannedFiles,
   'modified_files': modifiedFiles,
   'removed_comments': removedComments,
+  'formatted_files': formattedFiles,
+  'format_failed_files':
+      formatFailedFiles.map((failure) => failure.toJson()).toList(),
   'failed_files': failedFiles.map((failure) => failure.toJson()).toList(),
 };
 writeHtmlFeatureMapping(
