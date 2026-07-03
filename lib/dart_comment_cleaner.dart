@@ -22,17 +22,39 @@ class DartCommentCleanupFailure {
       };
 }
 
+class DartCommentFormatFailure {
+  const DartCommentFormatFailure({
+    required this.path,
+    required this.exitCode,
+    required this.message,
+  });
+
+  final String path;
+  final int exitCode;
+  final String message;
+
+  Map<String, Object> toJson() => {
+        'path': path,
+        'exit_code': exitCode,
+        'message': message,
+      };
+}
+
 class DartCommentCleanupResult {
   const DartCommentCleanupResult({
     required this.scannedFiles,
     required this.modifiedFiles,
     required this.removedComments,
+    required this.formattedFiles,
+    required this.formatFailedFiles,
     required this.failedFiles,
   });
 
   final int scannedFiles;
   final int modifiedFiles;
   final int removedComments;
+  final int formattedFiles;
+  final List<DartCommentFormatFailure> formatFailedFiles;
   final List<DartCommentCleanupFailure> failedFiles;
 }
 
@@ -63,6 +85,8 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
 
   var modifiedFiles = 0;
   var removedComments = 0;
+  var formattedFiles = 0;
+  final formatFailedFiles = <DartCommentFormatFailure>[];
   final failedFiles = <DartCommentCleanupFailure>[];
 
   for (final file in files) {
@@ -92,6 +116,12 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
         file.writeAsStringSync(updated);
         modifiedFiles++;
         removedComments += comments.length;
+        final formatFailure = _formatFile(file, projectPath);
+        if (formatFailure == null) {
+          formattedFiles++;
+        } else {
+          formatFailedFiles.add(formatFailure);
+        }
       }
     } catch (error) {
       failedFiles.add(
@@ -107,6 +137,8 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
     scannedFiles: files.length,
     modifiedFiles: modifiedFiles,
     removedComments: removedComments,
+    formattedFiles: formattedFiles,
+    formatFailedFiles: List.unmodifiable(formatFailedFiles),
     failedFiles: List.unmodifiable(failedFiles),
   );
   final mappingPath = writeHtmlFeatureMapping(
@@ -119,11 +151,16 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
         'scanned_files': result.scannedFiles,
         'modified_files': result.modifiedFiles,
         'removed_comments': result.removedComments,
+        'formatted_files': result.formattedFiles,
+        'format_failed_files': result.formatFailedFiles.length,
         'failed_files': result.failedFiles.length,
       },
       'scanned_files': result.scannedFiles,
       'modified_files': result.modifiedFiles,
       'removed_comments': result.removedComments,
+      'formatted_files': result.formattedFiles,
+      'format_failed_files':
+          result.formatFailedFiles.map((failure) => failure.toJson()).toList(),
       'failed_files':
           result.failedFiles.map((failure) => failure.toJson()).toList(),
     },
@@ -133,6 +170,15 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
   Log.log('Scanned files: ${result.scannedFiles}');
   Log.log('Modified files: ${result.modifiedFiles}');
   Log.log('Removed comments: ${result.removedComments}');
+  Log.log('Formatted files: ${result.formattedFiles}');
+  if (result.formatFailedFiles.isNotEmpty) {
+    Log.log('Format failed files: ${result.formatFailedFiles.length}');
+    for (final failure in result.formatFailedFiles) {
+      Log.log(
+        '  ${failure.path} (exit ${failure.exitCode}): ${failure.message}',
+      );
+    }
+  }
   if (result.failedFiles.isNotEmpty) {
     Log.log('Failed files: ${result.failedFiles.length}');
     for (final failure in result.failedFiles) {
@@ -142,6 +188,33 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
   Log.log('Mapping document: $mappingPath');
 
   return result;
+}
+
+DartCommentFormatFailure? _formatFile(File file, String projectPath) {
+  final relativePath = p.relative(file.path, from: projectPath);
+  try {
+    final process = Process.runSync(
+      Platform.resolvedExecutable,
+      ['format', file.path],
+      workingDirectory: projectPath,
+    );
+    if (process.exitCode == 0) {
+      return null;
+    }
+    final stderr = '${process.stderr}'.trim();
+    final stdout = '${process.stdout}'.trim();
+    return DartCommentFormatFailure(
+      path: relativePath,
+      exitCode: process.exitCode,
+      message: stderr.isNotEmpty ? stderr : stdout,
+    );
+  } catch (error) {
+    return DartCommentFormatFailure(
+      path: relativePath,
+      exitCode: -1,
+      message: '$error',
+    );
+  }
 }
 
 List<_CommentRange> _collectCommentRanges(ParseStringResult parseResult) {

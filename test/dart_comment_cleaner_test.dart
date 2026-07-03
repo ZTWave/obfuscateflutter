@@ -67,6 +67,42 @@ void main() {
     expect(parseString(content: updated).errors, isEmpty);
   });
 
+  test('formats each file after removing its comments', () {
+    final file = File(p.join(projectDir.path, 'lib', 'main.dart'))
+      ..writeAsStringSync("void main(){// remove\nprint('value');}\n");
+
+    final result = cleanDartComments(projectDir.path);
+
+    expect(
+      file.readAsStringSync(),
+      equals("void main() {\n  print('value');\n}\n"),
+    );
+    expect(result.formattedFiles, 1);
+    expect(result.formatFailedFiles, isEmpty);
+  });
+
+  test('keeps cleaned source and records details when formatting fails', () {
+    final file = File(p.join(projectDir.path, 'lib', 'broken.dart'))
+      ..writeAsStringSync('void main( { // remove\n}\n');
+
+    final result = cleanDartComments(projectDir.path);
+
+    expect(file.readAsStringSync(), isNot(contains('// remove')));
+    expect(result.modifiedFiles, 1);
+    expect(result.removedComments, 1);
+    expect(result.formattedFiles, 0);
+    expect(result.formatFailedFiles, hasLength(1));
+    expect(result.formatFailedFiles.single.path, 'lib/broken.dart');
+    expect(result.formatFailedFiles.single.exitCode, isNonZero);
+
+    final mapping = readHtmlFeatureMapping(
+      projectDir,
+      'dart_comment_cleanup',
+    );
+    expect(mapping['formatted_files'], 0);
+    expect(mapping['format_failed_files'], hasLength(1));
+  });
+
   test('processes generated files under lib and ignores files outside lib', () {
     final generated = File(p.join(projectDir.path, 'lib', 'model.g.dart'))
       ..writeAsStringSync('const value = 1; // generated\n');
@@ -81,7 +117,7 @@ void main() {
     expect(result.removedComments, 1);
   });
 
-  test('preserves line breaks from multiline block comments', () {
+  test('keeps code valid after formatting multiline block comments', () {
     const source = 'void main() {\r\n'
         '  final value = 1; /* first\r\nsecond\nthird */\r\n'
         '  print(value);\r\n'
@@ -94,10 +130,9 @@ void main() {
 
     expect(updated, isNot(contains('first')));
     expect(
-      '\r\n'.allMatches(updated).length,
-      '\r\n'.allMatches(source).length,
+      updated.replaceAll('\r\n', '\n'),
+      equals('void main() {\n  final value = 1;\n\n  print(value);\n}\n'),
     );
-    expect('\n'.allMatches(updated).length, '\n'.allMatches(source).length);
     expect(parseString(content: updated).errors, isEmpty);
   });
 
@@ -115,6 +150,8 @@ void main() {
     expect(file.lastModifiedSync(), firstModified);
     expect(second.modifiedFiles, 0);
     expect(second.removedComments, 0);
+    expect(second.formattedFiles, 0);
+    expect(second.formatFailedFiles, isEmpty);
   });
 
   test('continues after an unreadable source and writes mapping statistics',
