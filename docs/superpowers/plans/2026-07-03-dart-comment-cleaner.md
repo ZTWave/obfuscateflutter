@@ -17,8 +17,9 @@
 - Do not create backups or a missing `lib` directory.
 - Do not modify a file if cleanup introduces parser diagnostics not present in the original source.
 - Continue after a per-file failure and report the failed relative path and reason.
-- Run `dart format <file>` after writing each successfully cleaned file.
+- Collect successfully cleaned files and run `dart format` in batches of at most 200 paths.
 - Do not format files that contained no comments.
+- If a batch fails, rerun only that batch one file at a time to identify exact failures.
 - Keep cleaned source when formatting fails; record the path, exit code, and stderr without rolling back.
 - Run cleanup last in the `x` pipeline.
 
@@ -42,6 +43,7 @@
 - Produces: `DartCommentCleanupResult cleanDartComments(String projectPath)`.
 - Produces: `DartCommentCleanupResult` with `scannedFiles`, `modifiedFiles`, `removedComments`, and `failedFiles`.
 - Produces format statistics through `formattedFiles` and `formatFailedFiles`.
+- Produces optional `DartFormatRunner? formatRunner` injection for deterministic process-count and failure tests.
 - Produces mapping feature id `dart_comment_cleanup` and title `Dart 源码注释清理`.
 
 - [ ] **Step 1: Write failing tests for complete and safe comment removal**
@@ -171,6 +173,20 @@ class DartCommentCleanupResult {
 DartCommentCleanupResult cleanDartComments(String projectPath)
 ```
 
+Extend the public entry point without breaking existing callers:
+
+```dart
+typedef DartFormatRunner = ProcessResult Function(
+  List<String> filePaths,
+  String workingDirectory,
+);
+
+DartCommentCleanupResult cleanDartComments(
+  String projectPath, {
+  DartFormatRunner? formatRunner,
+})
+```
+
 Formatting extension:
 
 ```dart
@@ -187,10 +203,23 @@ class DartCommentFormatFailure {
 }
 ```
 
-After `file.writeAsStringSync(updated)`, run
-`Process.runSync(Platform.resolvedExecutable, ['format', file.path])`. Increment
-`formattedFiles` on exit code `0`; otherwise append a
-`DartCommentFormatFailure` and keep the cleaned file unchanged.
+After `file.writeAsStringSync(updated)`, append the file to `filesToFormat`.
+When cleanup completes, split that list into chunks of at most 200 files and run:
+
+```dart
+Process.runSync(
+  Platform.resolvedExecutable,
+  ['format', ...batch.map((file) => file.path)],
+  workingDirectory: projectPath,
+);
+```
+
+If a batch exits with code `0`, add its length to `formattedFiles`. If it fails,
+rerun only that batch one file at a time. Count successful retries individually;
+append `DartCommentFormatFailure` for failed retries and keep cleaned source.
+Tests inject a runner that records calls and returns `ProcessResult(...)`, proving
+that 201 modified files produce two successful batch calls and that only a failed
+batch triggers per-file retries.
 
 Implementation requirements:
 
