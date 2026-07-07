@@ -63,6 +63,36 @@ void _adjustPixels(File file, Random rand) {
     return;
   }
 
+  try {
+    _adjustDecodedPixels(decoded, rand);
+
+    // --- Re-encode ---
+    List<int>? encoded;
+    switch (ext) {
+      case '.png':
+        encoded = img.PngEncoder(level: 6).encode(decoded);
+        break;
+      case '.jpg':
+      case '.jpeg':
+        encoded = img.JpegEncoder(quality: 92).encode(decoded);
+        break;
+      case '.webp':
+        break;
+    }
+
+    if (encoded != null) {
+      file.writeAsBytesSync(encoded);
+    } else {
+      _appendRandomBytes(file, rand);
+    }
+  } on Object catch (e) {
+    print(
+        'process image failed, append random bytes instead: ${file.path} ($e)');
+    _appendRandomBytes(file, rand);
+  }
+}
+
+void _adjustDecodedPixels(img.Image decoded, Random rand) {
   // --- Pixel-level adjustments ---
   final brightness = (rand.nextDouble() - 0.5) * 3; // [-1.5, 1.5]
   final contrast = 0.995 + rand.nextDouble() * 0.010; // [0.995, 1.005]
@@ -94,26 +124,6 @@ void _adjustPixels(File file, Random rand) {
       decoded.setPixelRgba(x, y, r, g, b, px.a);
     }
   }
-
-  // --- Re-encode ---
-  List<int>? encoded;
-  switch (ext) {
-    case '.png':
-      encoded = img.PngEncoder(level: 6).encode(decoded);
-      break;
-    case '.jpg':
-    case '.jpeg':
-      encoded = img.JpegEncoder(quality: 92).encode(decoded);
-      break;
-    case '.webp':
-      break;
-  }
-
-  if (encoded != null) {
-    file.writeAsBytesSync(encoded);
-  } else {
-    _appendRandomBytes(file, rand);
-  }
 }
 
 // 一个纯数学的整数哈希，输入 (x, y, seed) 三个整数，输出一个伪随机但确定的值。这样：
@@ -137,12 +147,6 @@ void _appendRandomBytes(File file, Random rand) {
   var endRandomStr = genRandomKey(rand.nextInt(2) + 1);
   content.addAll(endRandomStr.codeUnits);
   file.writeAsBytesSync(content);
-}
-
-void _printMd5(File file, {String prefixStr = ""}) {
-  var bytes = file.readAsBytesSync();
-  var md5Str = md5.convert(bytes).toString();
-  print("$prefixStr -> $md5Str");
 }
 
 String getImageFileMD5(File file) {
