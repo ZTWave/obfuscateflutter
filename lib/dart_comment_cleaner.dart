@@ -45,6 +45,7 @@ class DartCommentCleanupResult {
     required this.scannedFiles,
     required this.modifiedFiles,
     required this.removedComments,
+    required this.removedBlankLines,
     required this.formattedFiles,
     required this.formatFailedFiles,
     required this.failedFiles,
@@ -53,6 +54,7 @@ class DartCommentCleanupResult {
   final int scannedFiles;
   final int modifiedFiles;
   final int removedComments;
+  final int removedBlankLines;
   final int formattedFiles;
   final List<DartCommentFormatFailure> formatFailedFiles;
   final List<DartCommentCleanupFailure> failedFiles;
@@ -70,6 +72,16 @@ class _CommentRange {
   final String lexeme;
 }
 
+class _BlankLineCleanupResult {
+  const _BlankLineCleanupResult({
+    required this.source,
+    required this.removedLines,
+  });
+
+  final String source;
+  final int removedLines;
+}
+
 DartCommentCleanupResult cleanDartComments(String projectPath) {
   final libDirectory = Directory(p.join(projectPath, 'lib'));
   if (!libDirectory.existsSync()) {
@@ -85,8 +97,7 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
 
   var modifiedFiles = 0;
   var removedComments = 0;
-  var formattedFiles = 0;
-  final formatFailedFiles = <DartCommentFormatFailure>[];
+  var removedBlankLines = 0;
   final failedFiles = <DartCommentCleanupFailure>[];
 
   for (final file in files) {
@@ -98,11 +109,13 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
         throwIfDiagnostics: false,
       );
       final comments = _collectCommentRanges(originalParse);
-      if (comments.isEmpty) {
+      final withoutComments =
+          comments.isEmpty ? source : _removeCommentRanges(source, comments);
+      final blankLineCleanup = _removeCodeBlankLines(withoutComments);
+      final updated = blankLineCleanup.source;
+      if (updated == source) {
         continue;
       }
-
-      final updated = _removeCommentRanges(source, comments);
       final updatedParse = parseString(
         content: updated,
         path: file.path,
@@ -112,17 +125,10 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
         throw StateError('comment cleanup introduced parser diagnostics');
       }
 
-      if (updated != source) {
-        file.writeAsStringSync(updated);
-        modifiedFiles++;
-        removedComments += comments.length;
-        final formatFailure = _formatFile(file, projectPath);
-        if (formatFailure == null) {
-          formattedFiles++;
-        } else {
-          formatFailedFiles.add(formatFailure);
-        }
-      }
+      file.writeAsStringSync(updated);
+      modifiedFiles++;
+      removedComments += comments.length;
+      removedBlankLines += blankLineCleanup.removedLines;
     } catch (error) {
       failedFiles.add(
         DartCommentCleanupFailure(
@@ -137,8 +143,9 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
     scannedFiles: files.length,
     modifiedFiles: modifiedFiles,
     removedComments: removedComments,
-    formattedFiles: formattedFiles,
-    formatFailedFiles: List.unmodifiable(formatFailedFiles),
+    removedBlankLines: removedBlankLines,
+    formattedFiles: 0,
+    formatFailedFiles: const [],
     failedFiles: List.unmodifiable(failedFiles),
   );
   final mappingPath = writeHtmlFeatureMapping(
@@ -151,6 +158,7 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
         'scanned_files': result.scannedFiles,
         'modified_files': result.modifiedFiles,
         'removed_comments': result.removedComments,
+        'removed_blank_lines': result.removedBlankLines,
         'formatted_files': result.formattedFiles,
         'format_failed_files': result.formatFailedFiles.length,
         'failed_files': result.failedFiles.length,
@@ -158,6 +166,7 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
       'scanned_files': result.scannedFiles,
       'modified_files': result.modifiedFiles,
       'removed_comments': result.removedComments,
+      'removed_blank_lines': result.removedBlankLines,
       'formatted_files': result.formattedFiles,
       'format_failed_files':
           result.formatFailedFiles.map((failure) => failure.toJson()).toList(),
@@ -170,15 +179,8 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
   Log.log('Scanned files: ${result.scannedFiles}');
   Log.log('Modified files: ${result.modifiedFiles}');
   Log.log('Removed comments: ${result.removedComments}');
+  Log.log('Removed blank lines: ${result.removedBlankLines}');
   Log.log('Formatted files: ${result.formattedFiles}');
-  if (result.formatFailedFiles.isNotEmpty) {
-    Log.log('Format failed files: ${result.formatFailedFiles.length}');
-    for (final failure in result.formatFailedFiles) {
-      Log.log(
-        '  ${failure.path} (exit ${failure.exitCode}): ${failure.message}',
-      );
-    }
-  }
   if (result.failedFiles.isNotEmpty) {
     Log.log('Failed files: ${result.failedFiles.length}');
     for (final failure in result.failedFiles) {
@@ -188,33 +190,6 @@ DartCommentCleanupResult cleanDartComments(String projectPath) {
   Log.log('Mapping document: $mappingPath');
 
   return result;
-}
-
-DartCommentFormatFailure? _formatFile(File file, String projectPath) {
-  final relativePath = p.relative(file.path, from: projectPath);
-  try {
-    final process = Process.runSync(
-      Platform.resolvedExecutable,
-      ['format', file.path],
-      workingDirectory: projectPath,
-    );
-    if (process.exitCode == 0) {
-      return null;
-    }
-    final stderr = '${process.stderr}'.trim();
-    final stdout = '${process.stdout}'.trim();
-    return DartCommentFormatFailure(
-      path: relativePath,
-      exitCode: process.exitCode,
-      message: stderr.isNotEmpty ? stderr : stdout,
-    );
-  } catch (error) {
-    return DartCommentFormatFailure(
-      path: relativePath,
-      exitCode: -1,
-      message: '$error',
-    );
-  }
 }
 
 List<_CommentRange> _collectCommentRanges(ParseStringResult parseResult) {
@@ -256,6 +231,86 @@ String _removeCommentRanges(String source, List<_CommentRange> comments) {
     );
   }
   return updated;
+}
+
+_BlankLineCleanupResult _removeCodeBlankLines(String source) {
+  final parseResult = parseString(
+    content: source,
+    throwIfDiagnostics: false,
+  );
+  final tokenRanges = _collectTokenRanges(parseResult);
+  final buffer = StringBuffer();
+  var removedLines = 0;
+  var offset = 0;
+
+  while (offset < source.length) {
+    final lineStart = offset;
+    var lineEnd = offset;
+    while (lineEnd < source.length &&
+        source.codeUnitAt(lineEnd) != 10 &&
+        source.codeUnitAt(lineEnd) != 13) {
+      lineEnd++;
+    }
+
+    var nextOffset = lineEnd;
+    if (nextOffset < source.length) {
+      if (source.codeUnitAt(nextOffset) == 13 &&
+          nextOffset + 1 < source.length &&
+          source.codeUnitAt(nextOffset + 1) == 10) {
+        nextOffset += 2;
+      } else {
+        nextOffset++;
+      }
+    }
+
+    final line = source.substring(lineStart, lineEnd);
+    final isBlankLine = line.trim().isEmpty;
+    final isInsideToken = _rangeIntersectsToken(
+      lineStart,
+      nextOffset,
+      tokenRanges,
+    );
+    if (isBlankLine && !isInsideToken) {
+      removedLines++;
+    } else {
+      buffer.write(source.substring(lineStart, nextOffset));
+    }
+
+    offset = nextOffset;
+  }
+
+  return _BlankLineCleanupResult(
+    source: buffer.toString(),
+    removedLines: removedLines,
+  );
+}
+
+List<(int, int)> _collectTokenRanges(ParseStringResult parseResult) {
+  final ranges = <(int, int)>[];
+  Token? token = parseResult.unit.beginToken;
+  while (token != null) {
+    if (token.length > 0) {
+      ranges.add((token.offset, token.offset + token.length));
+    }
+    if (token.type == TokenType.EOF) {
+      break;
+    }
+    token = token.next;
+  }
+  return ranges;
+}
+
+bool _rangeIntersectsToken(int start, int end, List<(int, int)> tokenRanges) {
+  for (final (tokenStart, tokenEnd) in tokenRanges) {
+    if (tokenEnd <= start) {
+      continue;
+    }
+    if (tokenStart >= end) {
+      return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 String _commentReplacement(String lexeme) {

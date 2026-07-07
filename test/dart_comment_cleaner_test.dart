@@ -67,7 +67,62 @@ void main() {
     expect(parseString(content: updated).errors, isEmpty);
   });
 
-  test('formats each file after removing its comments', () {
+  test('removes blank lines between code without formatting', () {
+    final file = File(p.join(projectDir.path, 'lib', 'main.dart'))
+      ..writeAsStringSync('''
+void main() {
+
+  final value = 1;
+  
+  print(value);
+}
+''');
+
+    final result = cleanDartComments(projectDir.path);
+    final updated = file.readAsStringSync();
+
+    expect(
+      updated,
+      equals('void main() {\n  final value = 1;\n  print(value);\n}\n'),
+    );
+    expect(result.modifiedFiles, 1);
+    expect(result.removedComments, 0);
+    expect(result.removedBlankLines, 2);
+    expect(parseString(content: updated).errors, isEmpty);
+  });
+
+  test('keeps blank lines inside multiline strings', () {
+    final file = File(p.join(projectDir.path, 'lib', 'main.dart'))
+      ..writeAsStringSync('''
+void main() {
+  final text = """first
+
+second""";
+
+  print(text);
+}
+''');
+
+    final result = cleanDartComments(projectDir.path);
+    final updated = file.readAsStringSync();
+
+    expect(updated, contains('"""first\n\nsecond"""'));
+    expect(
+      updated,
+      equals(
+        'void main() {\n'
+        '  final text = """first\n'
+        '\n'
+        'second""";\n'
+        '  print(text);\n'
+        '}\n',
+      ),
+    );
+    expect(result.removedBlankLines, 1);
+    expect(parseString(content: updated).errors, isEmpty);
+  });
+
+  test('does not format files after removing comments', () {
     final file = File(p.join(projectDir.path, 'lib', 'main.dart'))
       ..writeAsStringSync("void main(){// remove\nprint('value');}\n");
 
@@ -75,13 +130,13 @@ void main() {
 
     expect(
       file.readAsStringSync(),
-      equals("void main() {\n  print('value');\n}\n"),
+      equals("void main(){\nprint('value');}\n"),
     );
-    expect(result.formattedFiles, 1);
+    expect(result.formattedFiles, 0);
     expect(result.formatFailedFiles, isEmpty);
   });
 
-  test('keeps cleaned source and records details when formatting fails', () {
+  test('keeps cleaned source without recording formatter failures', () {
     final file = File(p.join(projectDir.path, 'lib', 'broken.dart'))
       ..writeAsStringSync('void main( { // remove\n}\n');
 
@@ -91,16 +146,14 @@ void main() {
     expect(result.modifiedFiles, 1);
     expect(result.removedComments, 1);
     expect(result.formattedFiles, 0);
-    expect(result.formatFailedFiles, hasLength(1));
-    expect(result.formatFailedFiles.single.path, 'lib/broken.dart');
-    expect(result.formatFailedFiles.single.exitCode, isNonZero);
+    expect(result.formatFailedFiles, isEmpty);
 
     final mapping = readHtmlFeatureMapping(
       projectDir,
       'dart_comment_cleanup',
     );
     expect(mapping['formatted_files'], 0);
-    expect(mapping['format_failed_files'], hasLength(1));
+    expect(mapping['format_failed_files'], isEmpty);
   });
 
   test('processes generated files under lib and ignores files outside lib', () {
@@ -131,7 +184,7 @@ void main() {
     expect(updated, isNot(contains('first')));
     expect(
       updated.replaceAll('\r\n', '\n'),
-      equals('void main() {\n  final value = 1;\n\n  print(value);\n}\n'),
+      equals('void main() {\n  final value = 1; \n  print(value);\n}\n'),
     );
     expect(parseString(content: updated).errors, isEmpty);
   });
