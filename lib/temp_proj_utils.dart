@@ -54,7 +54,7 @@ Future<void> copyProjectToTemp(String baseProject, String tempPath) async {
 
 Future<void> _copyEntityToTemp(
     FileSystemEntity entity, String targetPath) async {
-  if (p.basename(entity.path) == '.git') {
+  if (_shouldSkipTempCopyEntity(entity)) {
     return;
   }
 
@@ -86,6 +86,10 @@ Future<void> _copyEntityToTemp(
     }
     await Link(targetPath).create(entity.targetSync());
   }
+}
+
+bool _shouldSkipTempCopyEntity(FileSystemEntity entity) {
+  return {'.git', 'build'}.contains(p.basename(entity.path));
 }
 
 transOutputTo(String baseProjectPath, String tempProjectPath,

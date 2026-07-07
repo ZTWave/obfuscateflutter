@@ -52,4 +52,27 @@ void main() {
     expect(File(p.join(target.path, 'README.md')).readAsStringSync(),
         equals('sample'));
   });
+
+  test('copyProjectToTemp skips build directories', () async {
+    final root = Directory.systemTemp.createTempSync('obf_temp_copy_');
+    addTearDown(() {
+      if (root.existsSync()) {
+        root.deleteSync(recursive: true);
+      }
+    });
+
+    final source = Directory(p.join(root.path, 'source'))..createSync();
+    final target = Directory(p.join(root.path, 'target'))..createSync();
+    Directory(p.join(source.path, 'build', 'app', 'outputs'))
+        .createSync(recursive: true);
+    File(p.join(source.path, 'build', 'app', 'outputs', 'app.apk'))
+        .writeAsStringSync('binary');
+    File(p.join(source.path, 'pubspec.yaml')).writeAsStringSync('name: app');
+
+    await copyProjectToTemp(source.path, target.path);
+
+    expect(Directory(p.join(target.path, 'build')).existsSync(), isFalse);
+    expect(File(p.join(target.path, 'pubspec.yaml')).readAsStringSync(),
+        equals('name: app'));
+  });
 }
