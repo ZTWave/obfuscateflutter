@@ -22,9 +22,10 @@ void changeImageMd5(String path) {
       .toList();
 
   for (var imgFile in images) {
-    _printMd5(imgFile, prefixStr: "before");
+    final beforeMd5Str = getImageFileMD5(imgFile);
     _adjustPixels(imgFile, rand);
-    _printMd5(imgFile, prefixStr: "after");
+    final afterMd5Str = getImageFileMD5(imgFile);
+    print('change image md5: ${imgFile.path} -> $beforeMd5Str -> $afterMd5Str');
   }
 }
 
@@ -142,4 +143,8 @@ void _printMd5(File file, {String prefixStr = ""}) {
   var bytes = file.readAsBytesSync();
   var md5Str = md5.convert(bytes).toString();
   print("$prefixStr -> $md5Str");
+}
+
+String getImageFileMD5(File file) {
+  return md5.convert(file.readAsBytesSync()).toString();
 }
