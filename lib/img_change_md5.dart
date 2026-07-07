@@ -11,20 +11,34 @@ import 'package:path/path.dart' as p;
 void changeImageMd5(String path) {
   final rand = Random(DateTime.now().millisecondsSinceEpoch);
 
-  List<Directory> assertsDir = YamlHelper.getAssetsDir(path).map((String e) => Directory(p.join(path, e))).toList();
-
-  List<FileSystemEntity> fileEles = [];
-  for (final dir in assertsDir) {
-    fileEles.addAll(dir.listSync(recursive: true));
+  final fileEles = <FileSystemEntity>[];
+  for (final asset in YamlHelper.getAssetsDir(path)) {
+    fileEles.addAll(_resolveAssetEntities(path, asset));
   }
 
-  List<File> images = fileEles.whereType<File>().where((e) => imagesExtNames.contains(getFileExtName(e))).toList();
+  List<File> images = fileEles
+      .whereType<File>()
+      .where((e) => imagesExtNames.contains(getFileExtName(e)))
+      .toList();
 
   for (var imgFile in images) {
     _printMd5(imgFile, prefixStr: "before");
     _adjustPixels(imgFile, rand);
     _printMd5(imgFile, prefixStr: "after");
   }
+}
+
+List<FileSystemEntity> _resolveAssetEntities(String projectPath, String asset) {
+  final assetPath = p.join(projectPath, asset);
+  final type = FileSystemEntity.typeSync(assetPath, followLinks: false);
+  if (type == FileSystemEntityType.file) {
+    return [File(assetPath)];
+  }
+  if (type == FileSystemEntityType.directory) {
+    return Directory(assetPath).listSync(recursive: true, followLinks: false);
+  }
+  print('asset path not found, skip: $asset');
+  return [];
 }
 
 /// Apply subtle pixel adjustments + inject fake EXIF metadata.
@@ -34,7 +48,15 @@ void _adjustPixels(File file, Random rand) {
   final ext = getFileExtName(file).toLowerCase();
   final bytes = file.readAsBytesSync();
 
-  final decoded = img.decodeImage(bytes);
+  final img.Image? decoded;
+  try {
+    decoded = img.decodeImage(bytes);
+  } on Object catch (e) {
+    print(
+        'decode image failed, append random bytes instead: ${file.path} ($e)');
+    _appendRandomBytes(file, rand);
+    return;
+  }
   if (decoded == null) {
     _appendRandomBytes(file, rand);
     return;

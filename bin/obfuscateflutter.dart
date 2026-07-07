@@ -8,6 +8,7 @@ import 'package:obfuscateflutter/dart_comment_cleaner.dart';
 import 'package:obfuscateflutter/dart_noise_obfuscator.dart';
 import 'package:obfuscateflutter/encrypt_string.dart';
 import 'package:obfuscateflutter/gen_android_proguard_dicr.dart';
+import 'package:obfuscateflutter/html_mapping_writer.dart';
 import 'package:obfuscateflutter/img_change_md5.dart';
 import 'package:obfuscateflutter/ios_file_renamer.dart';
 import 'package:obfuscateflutter/ios_function_renamer.dart';
@@ -104,21 +105,25 @@ Future<void> _readTaskAndDo(
   switch (task) {
     case "1":
       {
+        initializeHtmlMappingReport(projectPath);
         _runChangeImageMd5(projectPath);
         break;
       }
     case "2":
       {
+        initializeHtmlMappingReport(projectPath);
         await _proguadImageNameAndClean(projectPath);
         break;
       }
     case "3":
       {
+        initializeHtmlMappingReport(projectPath);
         _runGenAndroidProguardDict(projectPath);
         break;
       }
     case "4":
       {
+        initializeHtmlMappingReport(projectPath);
         _encrypetString(projectPath);
         break;
       }
@@ -129,46 +134,55 @@ Future<void> _readTaskAndDo(
       }
     case "6":
       {
+        initializeHtmlMappingReport(projectPath);
         _runUnifiedObfuscation(projectPath);
         break;
       }
     case "7":
       {
+        initializeHtmlMappingReport(projectPath);
         _runDartNoiseObfuscation(projectPath);
         break;
       }
     case "8":
       {
+        initializeHtmlMappingReport(projectPath);
         _runClassInnerNoiseObfuscation(projectPath);
         break;
       }
     case "9":
       {
+        initializeHtmlMappingReport(projectPath);
         _runAndroidNoiseGeneration(projectPath);
         break;
       }
     case "10":
       {
+        initializeHtmlMappingReport(projectPath);
         await _runIosNoiseObfuscation(projectPath);
         break;
       }
     case "11":
       {
+        initializeHtmlMappingReport(projectPath);
         await _runIosFileRename(projectPath);
         break;
       }
     case "12":
       {
+        initializeHtmlMappingReport(projectPath);
         await _runIosFunctionRename(projectPath);
         break;
       }
     case "13":
       {
+        initializeHtmlMappingReport(projectPath);
         await _runIosStructuralDiffObfuscation(projectPath);
         break;
       }
     case "14":
       {
+        initializeHtmlMappingReport(projectPath);
         _runDartCommentCleanup(projectPath);
         break;
       }
@@ -176,6 +190,7 @@ Future<void> _readTaskAndDo(
       {
         await changeToTempDirAndRun(projectPath, pubSpaceName,
             (projectPathNew) async {
+          initializeHtmlMappingReport(projectPathNew);
           await _runAllObfuscationSteps(projectPathNew);
           print('!!!混淆任务已经完成!!!');
         });
