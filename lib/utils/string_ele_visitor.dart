@@ -19,14 +19,19 @@ class StringEncryptVisitor extends RecursiveAstVisitor<void> {
   StringEncryptVisitor(this.sep, this.sek, this.funcName);
 
   @override
+  void visitAdjacentStrings(AdjacentStrings node) {
+    if (_shouldSkipStringLiteral(node)) return;
+
+    final replacement = _buildStringExpression(node);
+    if (replacement == null) return;
+
+    replacements.add(StringReplacementData(node.offset, node.end, replacement));
+  }
+
+  @override
   void visitSimpleStringLiteral(SimpleStringLiteral node) {
-    if (_isWrappedInDes(node)) return;
-    if (_isInDirective(node)) return;
-    if (_isInAnnotation(node)) return;
-    if (node.inConstantContext) return;
-    if (_isInRequiredConstantExpression(node)) return;
-    if (_isInSwitchCaseExpression(node)) return;
-    if (_isInDartPattern(node)) return;
+    if (node.parent is AdjacentStrings) return;
+    if (_shouldSkipStringLiteral(node)) return;
 
     final value = node.value;
     if (value.isEmpty) return;
@@ -36,6 +41,76 @@ class StringEncryptVisitor extends RecursiveAstVisitor<void> {
     replacements.add(StringReplacementData(node.offset, node.end, replacement));
 
     super.visitSimpleStringLiteral(node);
+  }
+
+  @override
+  void visitStringInterpolation(StringInterpolation node) {
+    if (node.parent is AdjacentStrings) return;
+    if (_shouldSkipStringLiteral(node)) return;
+
+    final replacement = _buildStringExpression(node);
+    if (replacement == null) return;
+
+    replacements.add(StringReplacementData(node.offset, node.end, replacement));
+  }
+
+  bool _shouldSkipStringLiteral(StringLiteral node) {
+    if (_isWrappedInDes(node)) return true;
+    if (_isInDirective(node)) return true;
+    if (_isInAnnotation(node)) return true;
+    if (node.inConstantContext) return true;
+    if (_isInPreservedNamedArgument(node)) return true;
+    if (_isInRequiredConstantExpression(node)) return true;
+    if (_isInSwitchCaseExpression(node)) return true;
+    if (_isInDartPattern(node)) return true;
+    return false;
+  }
+
+  String? _buildStringExpression(StringLiteral node) {
+    final parts = <String>[];
+    _collectStringExpressionParts(node, parts);
+    if (parts.isEmpty) return null;
+    return parts.join(' + ');
+  }
+
+  void _collectStringExpressionParts(StringLiteral node, List<String> parts) {
+    if (node is AdjacentStrings) {
+      for (final string in node.strings) {
+        _collectStringExpressionParts(string, parts);
+      }
+      return;
+    }
+
+    if (node is SimpleStringLiteral) {
+      _addEncryptedPart(node.value, parts);
+      return;
+    }
+
+    if (node is StringInterpolation) {
+      for (final element in node.elements) {
+        if (element is InterpolationString) {
+          _addEncryptedPart(element.value, parts);
+        } else if (element is InterpolationExpression) {
+          parts.add(_interpolationExpressionSource(element));
+        }
+      }
+    }
+  }
+
+  void _addEncryptedPart(String value, List<String> parts) {
+    if (value.isEmpty) return;
+
+    final encrypted = StringCryptUtils.encrypt(value, sek);
+    parts.add('$funcName("$sep$encrypted")');
+  }
+
+  String _interpolationExpressionSource(InterpolationExpression element) {
+    final expression = element.expression;
+    final source = expression.toSource();
+    if (expression is SimpleIdentifier) {
+      return '$source.toString()';
+    }
+    return '($source).toString()';
   }
 
   bool _isWrappedInDes(AstNode node) {
@@ -49,12 +124,26 @@ class StringEncryptVisitor extends RecursiveAstVisitor<void> {
     return false;
   }
 
+  bool _isInPreservedNamedArgument(AstNode node) {
+    AstNode child = node;
+    AstNode? parent = node.parent;
+    while (parent != null) {
+      if (parent is NamedExpression && identical(parent.expression, child)) {
+        return _preservedNamedArguments.contains(parent.name.label.name);
+      }
+      child = parent;
+      parent = parent.parent;
+    }
+    return false;
+  }
+
   bool _isInDirective(AstNode node) {
     AstNode? current = node;
     while (current != null) {
       if (current is ImportDirective ||
           current is ExportDirective ||
-          current is PartDirective) {
+          current is PartDirective ||
+          current is PartOfDirective) {
         return true;
       }
       current = current.parent;
@@ -158,3 +247,9 @@ class StringEncryptVisitor extends RecursiveAstVisitor<void> {
         );
   }
 }
+
+const _preservedNamedArguments = {
+  'key',
+  'event',
+  'message',
+};

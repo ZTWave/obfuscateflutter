@@ -46,8 +46,8 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 | `1` | 修改图片 MD5 | 直接改写 `pubspec.yaml` assets 下的图片文件，打印处理前后 MD5。 | 需要在视觉变化极小的前提下改变图片二进制特征。 |
 | `2` | 混淆图片名称并清理 | 随机重命名被 Dart 代码引用的图片；删除未检测到引用的图片；同步替换 Dart 字符串中的资源名或资源路径。 | 清理未使用图片，并降低固定资源名特征。 |
 | `3` | 生成 Android Proguard 字典 | 写入 `android/app/dict.txt`，包含 10000 个随机名称。 | 配合 Android `proguard-rules.pro` 的 `-obfuscationdictionary` 等配置使用。 |
-| `4` | 混淆项目中所有 String | 新增或更新 `lib/stren_arg.dart`；将可安全处理的字符串替换为 `des("...")` 调用；自动补 import。 | 隐藏 Dart 源码中的普通字符串字面量。 |
-| `5` | 恢复已混淆 String | 根据 `lib/stren_arg.dart` 中的 `SEP/SEK` 还原 `des("...")` 字符串；无引用后删除 `stren_arg.dart`。 | 回滚功能4产生的字符串加密改动。 |
+| `4` | 混淆项目中所有 String | 新增或更新 `lib/stren_arg.dart`；将可安全处理的字符串替换为 `desNoStr("...")` 调用；自动补 import；生成 `test/obfuscate_string_debug.dart` 方便调试加解密。 | 隐藏 Dart 源码中的普通字符串字面量。 |
+| `5` | 恢复已混淆 String | 根据 `lib/stren_arg.dart` 中的 `SEP/SEK` 还原 `desNoStr("...")` 字符串；无引用后删除 `stren_arg.dart`。 | 回滚功能4产生的字符串加密改动。 |
 | `6` | 统一混淆 | AST 重写 import/export/part URI，重命名 `lib` 下目录和 Dart 文件，修正 `.g.dart/.freezed.dart` 的 `part of`，输出映射文档。 | 需要可追踪的文件/目录结构混淆。 |
 | `7` | Dart 随机代码注入/保留 | 在 `lib` 下生成随机 Dart 文件；修改 `lib/main.dart` 注入 retain 调用；输出生成映射文档。 | 增加同步可达代码、页面类、方法类和随机 shard 文件。 |
 | `8` | 类内垃圾代码注入 | 向已有类内部插入垃圾成员和轻量 hook；必要时补 import；输出类内注入映射文档。 | 在不额外链接独立工具文件的前提下，让已有业务类产生差异。 |
@@ -106,16 +106,18 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 
 结果：
 
-- 生成 `lib/stren_arg.dart`，保存 `SEP`、`SEK` 和 `des()` 解密函数。
-- 普通字符串会被替换为 `des("<SEP+加密文本>")`。
+- 生成 `lib/stren_arg.dart`，保存 `SEP`、`SEK` 和 `desNoStr()` 解密函数。
+- 普通字符串会被替换为 `desNoStr("<SEP+加密文本>")`。
 - 自动插入 `import 'package:<pubName>/stren_arg.dart';`，并保证 import 位于 `part` 之前。
+- 生成 `test/obfuscate_string_debug.dart`，其中包含 `ObfuscateStringTest.encrypt(text)`、`ObfuscateStringTest.decrypt(encrypted)`、`ObfuscateStringTest.inspect(text)` 和 `ObfuscateStringTest.verify(text)`，并内置 `test("test desNoStr", () { ... })` 示例。
+- 可在被混淆项目根目录运行 `flutter test test/obfuscate_string_debug.dart` 直接查看 `print` 出来的解密结果，不需要启动 App。
 
 会跳过的典型场景：
 
 - import/export/part URI。
 - 注解、常量表达式、const 上下文。
 - switch case、pattern、const 构造初始化等必须编译期常量的位置。
-- 已经被 `des()` 包裹的字符串。
+- 已经被 `desNoStr()` 包裹的字符串。
 
 ### 5. 恢复项目中已混淆的 String
 
@@ -123,7 +125,7 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 
 结果：
 
-- 将 `des("<SEP+加密文本>")` 还原为普通 Dart 字符串。
+- 将 `desNoStr("<SEP+加密文本>")` 还原为普通 Dart 字符串。
 - 自动移除不再需要的 `stren_arg.dart` import。
 - 如果项目中已无引用，会删除 `lib/stren_arg.dart`。
 
