@@ -23,8 +23,6 @@ import 'package:yaml/yaml.dart';
 
 void main(List<String> arguments) async {
   print('Hello, Creeper!');
-  print(
-      'brfore you start this project change all relative import to start with package import!');
   print('\n');
   final process = await Process.start(
     'flutter',
