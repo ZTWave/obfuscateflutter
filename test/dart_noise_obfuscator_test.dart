@@ -119,6 +119,18 @@ class SampleApp extends StatelessWidget {
     );
     expect(mapping['classes_touched'], contains('SampleApp'));
     expect(mapping['templates_used'], contains('timer_stub'));
+    expect(
+      mapping['summary'],
+      containsPair('files_touched', mapping['files_touched'].length),
+    );
+    expect(
+      mapping['summary'],
+      containsPair('members_injected', mapping['members'].length),
+    );
+    expect(
+      mapping['summary'],
+      containsPair('strings_injected', mapping['strings_injected'].length),
+    );
 
     runClassInnerNoiseObfuscation(projectDir.path);
     final secondSource =
@@ -690,6 +702,13 @@ class SampleApp extends StatelessWidget {
     expect(mapping['page_classes'], hasLength(2));
     expect(mapping['dart_classes'], hasLength(2));
     expect(mapping['methods'], hasLength(6));
+    expect(
+      mapping['summary'],
+      containsPair('generated_files', mapping['generated_files'].length),
+    );
+    expect(mapping['summary'], containsPair('page_classes', 2));
+    expect(mapping['summary'], containsPair('dart_classes', 2));
+    expect(mapping['summary'], containsPair('methods', 6));
   });
 
   test('dart noise generation falls back to tool config file', () {

@@ -140,6 +140,19 @@ void main() {
     expect(mapping['generated_components'], hasLength(4));
     expect(mapping['generated_resources'], isNotEmpty);
     expect(mapping['manifest_entries'], hasLength(4));
+    expect(
+      mapping['summary'],
+      containsPair('generated_components', 4),
+    );
+    expect(
+      mapping['summary'],
+      containsPair(
+          'generated_resources', mapping['generated_resources'].length),
+    );
+    expect(
+      mapping['summary'],
+      containsPair('manifest_entries', 4),
+    );
 
     runAndroidNoiseGeneration(projectDir.path);
     final secondManifest = File(p.join(
@@ -842,6 +855,151 @@ public class BillingMoveActivity {}
         mapping['skipped_items'].toString(), contains('BillingKeepActivity'));
     expect(
         mapping['skipped_items'].toString(), contains('drawable/keep_badge'));
+  });
+
+  test(
+      'android deep obfuscation keeps public class name aligned when duplicate simple names exist',
+      () {
+    final projectDir = _createAndroidProject();
+    final androidMain = Directory(p.join(
+      projectDir.path,
+      'android',
+      'app',
+      'src',
+      'main',
+    ));
+    final javaRoot = Directory(p.join(
+      androidMain.path,
+      'java',
+      'com',
+      'example',
+      'sample',
+    ));
+    final overridingDir =
+        Directory(p.join(javaRoot.path, 'generic', 'overriding'))
+          ..createSync(recursive: true);
+    final accountDir = Directory(p.join(javaRoot.path, 'profile', 'account'))
+      ..createSync(recursive: true);
+
+    File(p.join(projectDir.path, 'obfuscate_dart_noise.json'))
+        .writeAsStringSync(jsonEncode({
+      'androidNoise': {
+        'componentCount': {
+          'activity': 0,
+          'service': 0,
+          'receiver': 0,
+          'provider': 0,
+        },
+        'generateResources': {
+          'xml': false,
+          'images': false,
+        },
+        'deepObfuscation': {
+          'enabled': true,
+          'packageTemplates': ['witchs_cache', 'profile.account'],
+          'classTemplates': ['His{{className}}', 'PyList{{className}}'],
+          'resourceTemplates': ['profile_{{name}}'],
+          'semanticWords': ['profile'],
+        },
+      },
+    }));
+
+    File(p.join(overridingDir.path, 'YYSEceptionZkmhObject.java'))
+        .writeAsStringSync('''
+package com.example.sample.generic.overriding;
+
+public class YYSEceptionZkmhObject {
+  public YYSEceptionZkmhObject() {}
+}
+''');
+    File(p.join(overridingDir.path, 'PaymentHolder.java')).writeAsStringSync('''
+package com.example.sample.generic.overriding;
+
+public class PaymentHolder {
+  YYSEceptionZkmhObject model;
+}
+''');
+    File(p.join(accountDir.path, 'YYSEceptionZkmhObject.java'))
+        .writeAsStringSync('''
+package com.example.sample.profile.account;
+
+public class YYSEceptionZkmhObject {
+  public YYSEceptionZkmhObject() {}
+}
+''');
+    File(p.join(accountDir.path, 'PaymentHolder.java')).writeAsStringSync('''
+package com.example.sample.profile.account;
+
+public class PaymentHolder {
+  YYSEceptionZkmhObject model;
+}
+''');
+
+    runAndroidNoiseGeneration(projectDir.path);
+
+    final javaFiles = Directory(p.join(androidMain.path, 'java'))
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => p.extension(file.path) == '.java')
+        .toList();
+    final renamedDuplicateFiles = javaFiles
+        .where(
+            (file) => p.basename(file.path).contains('YYSEceptionZkmhObject'))
+        .toList();
+    expect(renamedDuplicateFiles, hasLength(2));
+
+    for (final file in renamedDuplicateFiles) {
+      final source = file.readAsStringSync();
+      final className = RegExp(r'public\s+class\s+([A-Za-z_][A-Za-z0-9_]*)')
+          .firstMatch(source)!
+          .group(1)!;
+      expect(
+        p.basenameWithoutExtension(file.path),
+        className,
+        reason: '${file.path} must match its public class declaration',
+      );
+      expect(source, contains('public $className()'));
+    }
+
+    final mapping = readHtmlFeatureMapping(projectDir, 'android_noise');
+    final classRenames = mapping['class_renames'] as Map<String, dynamic>;
+    expect(
+        classRenames.keys,
+        contains(
+            'com.example.sample.generic.overriding.YYSEceptionZkmhObject'));
+    expect(classRenames.keys,
+        contains('com.example.sample.profile.account.YYSEceptionZkmhObject'));
+
+    final overridingClassName = (classRenames[
+                'com.example.sample.generic.overriding.YYSEceptionZkmhObject']
+            as String)
+        .split('.')
+        .last;
+    final accountClassName = (classRenames[
+                'com.example.sample.profile.account.YYSEceptionZkmhObject']
+            as String)
+        .split('.')
+        .last;
+    final holderRenames = classRenames.entries
+        .where((entry) => entry.key.endsWith('.PaymentHolder'))
+        .map((entry) => entry.value as String)
+        .toList();
+    expect(holderRenames, hasLength(2));
+    final holderSources = holderRenames
+        .map((fqcn) => File(
+              p.join(
+                androidMain.path,
+                'java',
+                '${p.joinAll(fqcn.split('.'))}.java',
+              ),
+            ).readAsStringSync())
+        .join('\n');
+    expect(holderSources, contains('$overridingClassName model;'));
+    expect(holderSources, contains('$accountClassName model;'));
+    expect(
+      holderSources,
+      isNot(matches(RegExp(r'\bYYSEceptionZkmhObject\s+model;'))),
+    );
   });
 
   test('android deep obfuscation prints progress logs', () {

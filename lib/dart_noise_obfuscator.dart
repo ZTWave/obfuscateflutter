@@ -150,6 +150,16 @@ void runClassInnerNoiseObfuscation(String projectPath) {
 
   final mapping = {
     'generated_at': DateTime.now().toIso8601String(),
+    'summary': {
+      'files_touched': result.filesTouched.length,
+      'classes_touched': result.classesTouched.length,
+      'members_injected': result.members.length,
+      'hooks_injected': result.hooks.length,
+      'strings_injected': result.stringsInjected.length,
+      'imports_added': result.importsAdded.length,
+      'actual_added_lines': result.actualAddedLines,
+      'skipped': result.skipped.length,
+    },
     'config': innerConfig.toJson(),
     'config_file': config.configSource,
     'original_lines': result.originalLines,
@@ -210,6 +220,15 @@ void runDartNoiseObfuscation(String projectPath) {
 
   final mapping = {
     'generated_at': DateTime.now().toIso8601String(),
+    'summary': {
+      'generated_files': generatedFiles.length,
+      'page_classes': generated.pageClasses.length,
+      'dart_classes': generated.dartClasses.length,
+      'methods': generated.methods.length,
+      'snippet_types_used': generated.snippetUsage.length,
+      'main_file': 'lib/main.dart',
+      'retain_function': _retainFunctionName,
+    },
     'config': config.toJson(),
     'config_file': config.configSource,
     'generated_file': p.posix.join('lib', importPath),

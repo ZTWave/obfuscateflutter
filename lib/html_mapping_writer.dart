@@ -16,6 +16,52 @@ const _excludedFileCountDirectories = [
   'Pods',
   'build',
 ];
+const _summaryLabelTranslations = {
+  'scanned_files': '扫描文件数',
+  'modified_files': '修改文件数',
+  'removed_comments': '移除注释数',
+  'removed_blank_lines': '移除空行数',
+  'formatted_files': '格式化文件数',
+  'format_failed_files': '格式化失败文件数',
+  'failed_files': '失败文件数',
+  'files_scanned': '扫描文件数',
+  'files_touched': '修改文件数',
+  'files_rewritten': '重写文件数',
+  'files_renamed': '重命名文件数',
+  'groups_scanned': '扫描分组数',
+  'functions_renamed': '函数重命名数',
+  'transforms': '结构改写数',
+  'insertions': '代码插入数',
+  'added_lines': '新增行数',
+  'actual_added_lines': '实际新增行数',
+  'classes_touched': '修改类数',
+  'members_injected': '成员注入数',
+  'hooks_injected': 'Hook 注入数',
+  'strings_injected': '字符串注入数',
+  'imports_added': '新增 import 数',
+  'generated_files': '生成文件数',
+  'generated_components': '生成组件数',
+  'generated_resources': '生成资源数',
+  'manifest_entries': 'Manifest 注入数',
+  'page_classes': '页面类数',
+  'dart_classes': 'Dart 类数',
+  'methods': '方法数',
+  'snippet_types_used': 'Snippet 类型数',
+  'main_file': '入口文件',
+  'retain_function': '保留函数',
+  'package_renames': '包名改名数',
+  'class_renames': '类名改名数',
+  'resource_renames': '资源改名数',
+  'reflection_rewrites': '反射改写数',
+  'skipped': '跳过项数',
+  'skipped_items': '跳过项数',
+  'warnings': '警告数',
+  'total_files_processed': '处理文件总数',
+  'total_files_renamed': '重命名文件总数',
+  'total_dirs_renamed': '重命名目录总数',
+  'total_strings_encrypted': '加密字符串总数',
+  'total_imports_rewritten': '重写 import 总数',
+};
 
 String initializeHtmlMappingReport(String projectPath) {
   final outputFile = File(p.join(projectPath, unifiedMappingFileName));
@@ -446,7 +492,9 @@ int _countIosInjections(String featureId, Map<String, dynamic> mapping) {
 
 int _countAndroidInjections(String featureId, Map<String, dynamic> mapping) {
   if (featureId == 'android_noise') {
-    return _listLength(mapping['generated_components']);
+    return _listLength(mapping['generated_components']) +
+        _listLength(mapping['generated_resources']) +
+        _listLength(mapping['manifest_entries']);
   }
   return 0;
 }
@@ -603,7 +651,8 @@ String _reportList(String title, Object? items) {
 String _summaryTable(Object? summary) {
   if (summary is! Map || summary.isEmpty) return '';
   final rows = summary.entries.map((entry) {
-    return '<tr><th>${_escapeHtml('${entry.key}')}</th><td>${_escapeHtml('${entry.value}')}</td></tr>';
+    final label = _summaryLabelTranslations['${entry.key}'] ?? '${entry.key}';
+    return '<tr><th>${_escapeHtml(label)}</th><td>${_escapeHtml('${entry.value}')}</td></tr>';
   }).join('\n');
   return '<table><tbody>$rows</tbody></table>';
 }

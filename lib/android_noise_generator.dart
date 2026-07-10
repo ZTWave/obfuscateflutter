@@ -295,6 +295,17 @@ void runAndroidNoiseGeneration(String projectPath) {
     featureTitle: 'Android项目垃圾代码生成',
     mapping: {
       'generated_at': DateTime.now().toIso8601String(),
+      'summary': {
+        'generated_components': generated.components.length,
+        'generated_resources': generated.resources.length,
+        'manifest_entries': generated.manifestEntries.length,
+        'package_renames': deepResult.packageRenames.length,
+        'class_renames': deepResult.classRenames.length,
+        'resource_renames': deepResult.resourceRenames.length,
+        'reflection_rewrites': deepResult.reflectionRewrites.length,
+        'skipped_items': deepResult.skippedItems.length,
+        'warnings': deepResult.warnings.length,
+      },
       'config': config.toJson(),
       'config_file': config.configSource,
       'namespace': namespace,
@@ -1129,6 +1140,8 @@ int _rewriteAndroidSourceFiles({
       packageRenames,
       classRenames,
       classRenameEntries,
+      currentClassFqcn: symbol.fqcn,
+      currentPackageName: symbol.packageName,
     );
     source = _rewriteResourceReferencesInCode(source, resourceRenames);
     if (config.reflectionRewriteEnabled) {
@@ -1186,6 +1199,7 @@ int _rewriteSkippedAndroidSourceFiles({
         classRenames,
         classRenameEntries,
         rewriteDeclarations: false,
+        currentPackageName: packageName,
       );
       updated = _rewriteResourceReferencesInCode(updated, resourceRenames);
       if (config.reflectionRewriteEnabled) {
@@ -1659,7 +1673,15 @@ String _rewriteImportsAndTypeNames(
   Map<String, String> classRenames,
   List<MapEntry<String, String>> classRenameEntries, {
   bool rewriteDeclarations = true,
+  String? currentClassFqcn,
+  String? currentPackageName,
 }) {
+  final simpleClassRenames = _buildSimpleClassRenameMap(
+    source,
+    classRenameEntries,
+    currentClassFqcn: rewriteDeclarations ? currentClassFqcn : null,
+    currentPackageName: currentPackageName,
+  );
   var updated = source.replaceAllMapped(
     RegExp(
       r'^(\s*import\s+)([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)(\s*;?)',
@@ -1704,7 +1726,7 @@ String _rewriteImportsAndTypeNames(
         RegExp('(^|[^A-Za-z0-9_])$oldFqcn(?![A-Za-z0-9_])'),
         (match) => '${match.group(1)}${entry.value}',
       );
-      if (rewriteDeclarations) {
+      if (rewriteDeclarations && entry.key == currentClassFqcn) {
         rewritten = rewritten.replaceAllMapped(
           RegExp(r'\b(class|interface|enum|object)\s+' +
               RegExp.escape(entry.key.split('.').last) +
@@ -1717,15 +1739,60 @@ String _rewriteImportsAndTypeNames(
           newClassName: entry.value.split('.').last,
         );
       }
+    }
+    for (final entry in simpleClassRenames.entries) {
       rewritten = _rewriteSimpleClassReferences(
         rewritten,
-        oldClassName: entry.key.split('.').last,
-        newClassName: entry.value.split('.').last,
+        oldClassName: entry.key,
+        newClassName: entry.value,
       );
     }
     return rewritten;
   });
   return updated;
+}
+
+Map<String, String> _buildSimpleClassRenameMap(
+  String source,
+  List<MapEntry<String, String>> classRenameEntries, {
+  String? currentClassFqcn,
+  String? currentPackageName,
+}) {
+  final simpleNameCounts = <String, int>{};
+  for (final entry in classRenameEntries) {
+    final simpleName = entry.key.split('.').last;
+    simpleNameCounts[simpleName] = (simpleNameCounts[simpleName] ?? 0) + 1;
+  }
+
+  final importedClasses = RegExp(
+    r'^\s*import\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*;?',
+    multiLine: true,
+  ).allMatches(source).map((match) => match.group(1)!).toSet();
+
+  final result = <String, String>{};
+  final conflicts = <String>{};
+  for (final entry in classRenameEntries) {
+    final oldSimpleName = entry.key.split('.').last;
+    final newSimpleName = entry.value.split('.').last;
+    final oldPackageName =
+        entry.key.substring(0, entry.key.length - oldSimpleName.length - 1);
+    final shouldRewriteSimpleName = entry.key == currentClassFqcn ||
+        importedClasses.contains(entry.key) ||
+        oldPackageName == currentPackageName ||
+        simpleNameCounts[oldSimpleName] == 1;
+    if (!shouldRewriteSimpleName) continue;
+
+    final existing = result[oldSimpleName];
+    if (existing != null && existing != newSimpleName) {
+      result.remove(oldSimpleName);
+      conflicts.add(oldSimpleName);
+      continue;
+    }
+    if (!conflicts.contains(oldSimpleName)) {
+      result[oldSimpleName] = newSimpleName;
+    }
+  }
+  return result;
 }
 
 String _rewriteSimpleClassReferences(

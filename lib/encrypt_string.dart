@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
+import 'package:obfuscateflutter/html_mapping_writer.dart';
 import 'package:obfuscateflutter/log.dart';
 import 'package:obfuscateflutter/utils/string_crypt_utils.dart';
 import 'package:obfuscateflutter/utils/string_ele_visitor.dart';
@@ -64,11 +65,19 @@ void encryptStrings(String projectPath) {
 
   final importLine = "import 'package:$pubName/stren_arg.dart';";
 
+  final processedFiles = <_StringEncryptionFileResult>[];
   for (final file in dartFiles) {
-    _processFile(file, sep, sek, importLine);
+    processedFiles.add(_processFile(file, projectPath, sep, sek, importLine));
   }
 
   _writeStringDebugTestFile(projectPath, pubName, sep, sek);
+  _writeStringEncryptionMapping(
+    projectPath: projectPath,
+    projectName: pubName,
+    sep: sep,
+    sek: sek,
+    processedFiles: processedFiles,
+  );
 
   Log.log('String encryption complete.');
 }
@@ -128,8 +137,15 @@ List<File> _listProcessableDartFiles(String projectPath, String keyFilePath) {
       .toList();
 }
 
-void _processFile(File file, String sep, int sek, String importLine) {
+_StringEncryptionFileResult _processFile(
+  File file,
+  String projectPath,
+  String sep,
+  int sek,
+  String importLine,
+) {
   final source = file.readAsStringSync();
+  final relativePath = _relativeLibPath(projectPath, file.path);
 
   // Skip if import already exists — prevents duplicate imports on re-run
   final hasImport = source.contains('stren_arg.dart');
@@ -139,13 +155,19 @@ void _processFile(File file, String sep, int sek, String importLine) {
     unit = parseString(content: source).unit;
   } catch (e) {
     Log.log('  WARN: cannot parse ${file.path}, skipping ($e)');
-    return;
+    return _StringEncryptionFileResult(
+      path: relativePath,
+      skipped: true,
+      skipReason: 'parse_failed',
+    );
   }
 
   final visitor = StringEncryptVisitor(sep, sek, obfStringFuncName);
   unit.accept(visitor);
 
-  if (visitor.replacements.isEmpty) return;
+  if (visitor.replacements.isEmpty) {
+    return _StringEncryptionFileResult(path: relativePath);
+  }
 
   // Apply replacements end-to-start to preserve offsets
   String modified = source;
@@ -156,12 +178,19 @@ void _processFile(File file, String sep, int sek, String importLine) {
   }
 
   // Add import if not already present
+  var importAdded = false;
   if (!hasImport) {
     modified = _insertImport(modified, importLine, unit);
+    importAdded = true;
   }
 
   file.writeAsStringSync(modified);
   Log.log('  ${file.path}: encrypted ${visitor.replacements.length} strings');
+  return _StringEncryptionFileResult(
+    path: relativePath,
+    stringsEncrypted: visitor.replacements.length,
+    importAdded: importAdded,
+  );
 }
 
 int _restoreFile(File file, String sep, int sek, String importUri) {
@@ -249,6 +278,12 @@ String _readSek(File storeFile) {
   return match?.group(1) ?? '';
 }
 
+String _relativeLibPath(String projectPath, String filePath) {
+  return p
+      .relative(filePath, from: p.join(projectPath, 'lib'))
+      .replaceAll(p.separator, '/');
+}
+
 bool _hasCurrentKeyStoreTemplate(String content) {
   return content.contains('String $obfStringFuncName(') &&
       content.contains('_DES_CACHE_LIMIT') &&
@@ -319,6 +354,52 @@ void main() {
 ''');
 }
 
+void _writeStringEncryptionMapping({
+  required String projectPath,
+  required String projectName,
+  required String sep,
+  required int sek,
+  required List<_StringEncryptionFileResult> processedFiles,
+}) {
+  final totalStrings = processedFiles.fold<int>(
+    0,
+    (sum, file) => sum + file.stringsEncrypted,
+  );
+  final importsAdded = processedFiles.where((file) => file.importAdded).length;
+  final skippedFiles = processedFiles.where((file) => file.skipped).length;
+  final modifiedFiles =
+      processedFiles.where((file) => file.stringsEncrypted > 0).length;
+
+  final mappingPath = writeHtmlFeatureMapping(
+    projectPath: projectPath,
+    featureId: 'string_encryption',
+    featureTitle: 'Dart 字符串加密',
+    mapping: {
+      'version': '1.0',
+      'created_at': DateTime.now().toIso8601String(),
+      'project_name': projectName,
+      'string_encryption': {
+        'key_store_file':
+            defaultStringKeyStoreFile.replaceAll(p.separator, '/'),
+        'debug_test_file': 'test/obfuscate_string_debug.dart',
+        'function_name': obfStringFuncName,
+        'sep': sep,
+        'sek': sek,
+      },
+      'processed_files':
+          processedFiles.map((file) => file.toJson()).toList(growable: false),
+      'summary': {
+        'total_files_processed': processedFiles.length,
+        'modified_files': modifiedFiles,
+        'total_strings_encrypted': totalStrings,
+        'imports_added': importsAdded,
+        'skipped_files': skippedFiles,
+      },
+    },
+  );
+  Log.log('Mapping document: $mappingPath');
+}
+
 void _writeKeyStoreFile(File file, String sep, int sek) {
   file.writeAsStringSync('''
 // Auto-generated by obfuscateflutter -- do not edit manually.
@@ -353,6 +434,30 @@ String $obfStringFuncName(String s) {
   }
 }
 ''');
+}
+
+class _StringEncryptionFileResult {
+  final String path;
+  final int stringsEncrypted;
+  final bool importAdded;
+  final bool skipped;
+  final String? skipReason;
+
+  const _StringEncryptionFileResult({
+    required this.path,
+    this.stringsEncrypted = 0,
+    this.importAdded = false,
+    this.skipped = false,
+    this.skipReason,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'path': path,
+        'strings_encrypted': stringsEncrypted,
+        'import_added': importAdded,
+        if (skipped) 'skipped': true,
+        if (skipReason != null) 'skip_reason': skipReason,
+      };
 }
 
 String _genRandomSep() {

@@ -102,7 +102,12 @@ class StepTracker {}
         mapping['directory_renames'], containsPair('features/home', anything));
     expect(mapping['directory_renames'],
         containsPair('features/shared', anything));
-    expect(mapping['summary'], containsPair('total_strings_encrypted', 0));
+    expect(mapping['summary'], isNot(contains('total_strings_encrypted')));
     expect(mapping['summary'], containsPair('total_dirs_renamed', 5));
+
+    final processedFiles =
+        (mapping['processed_files'] as List<dynamic>).cast<Map>();
+    expect(processedFiles, isNotEmpty);
+    expect(processedFiles.first, isNot(contains('strings_encrypted')));
   });
 }

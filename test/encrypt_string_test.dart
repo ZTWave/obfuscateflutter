@@ -4,6 +4,8 @@ import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:obfuscateflutter/encrypt_string.dart';
 import 'package:test/test.dart';
 
+import 'mapping_test_utils.dart';
+
 void main() {
   test('generated string decryptor uses a bounded lru cache', () {
     final projectDir = Directory.systemTemp.createTempSync('obf_string_test_');
@@ -85,6 +87,58 @@ String label() => 'runtime';
         debugFileContent, contains('final b = ObfuscateStringTest.decrypt("'));
     expect(debugFileContent, contains('print(b);'));
     expect(debugFileContent, contains("expect(b, 'replace this text');"));
+  });
+
+  test('writes encrypted string counts to unified html mapping', () {
+    final projectDir = Directory.systemTemp.createTempSync('obf_string_test_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    File('${projectDir.path}/pubspec.yaml').writeAsStringSync('''
+name: sample_app
+environment:
+  sdk: ^3.2.3
+''');
+    Directory('${projectDir.path}/lib/src').createSync(recursive: true);
+    File('${projectDir.path}/lib/main.dart').writeAsStringSync('''
+String first() => 'first runtime';
+String second() => 'second runtime';
+''');
+    File('${projectDir.path}/lib/src/labels.dart').writeAsStringSync('''
+String nested() => 'nested runtime';
+''');
+
+    encryptStrings(projectDir.path);
+
+    final mapping = readHtmlFeatureMapping(projectDir, 'string_encryption');
+    final summary = mapping['summary'] as Map<String, dynamic>;
+    expect(summary['total_strings_encrypted'], 3);
+    expect(summary['total_files_processed'], 2);
+
+    final processedFiles =
+        (mapping['processed_files'] as List<dynamic>).cast<Map>();
+    expect(processedFiles, hasLength(2));
+    expect(
+      processedFiles,
+      contains(
+        allOf(
+          containsPair('path', 'main.dart'),
+          containsPair('strings_encrypted', 2),
+        ),
+      ),
+    );
+    expect(
+      processedFiles,
+      contains(
+        allOf(
+          containsPair('path', 'src/labels.dart'),
+          containsPair('strings_encrypted', 1),
+        ),
+      ),
+    );
   });
 
   test('existing decryptor without cache is regenerated', () {

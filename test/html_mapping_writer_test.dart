@@ -40,6 +40,14 @@ void main() {
           {'type': 'activity', 'class': 'TraceActivity'},
           {'type': 'service', 'class': 'TraceService'},
         ],
+        'generated_resources': [
+          'android/app/src/main/res/drawable/activity_panel.xml',
+          'android/app/src/main/res/layout/session_marker.xml',
+        ],
+        'manifest_entries': [
+          '<activity android:name=".TraceActivity" />',
+          '<service android:name=".TraceService" />',
+        ],
         'skipped_items': [
           {'kind': 'class', 'item': 'KeepActivity', 'reason': 'skipClasses'},
         ],
@@ -83,7 +91,7 @@ void main() {
     expect(totals['resources_renamed'], 1);
     expect(totals['dart_injections'], 1);
     expect(totals['ios_injections'], 0);
-    expect(totals['android_injections'], 2);
+    expect(totals['android_injections'], 6);
 
     final skipReasons = report['skip_reasons'] as List<dynamic>;
     expect(skipReasons.toString(), contains('skipClasses'));
@@ -92,6 +100,44 @@ void main() {
         contains('reflection string was not rewritten'));
     expect((report['manual_check_items'] as List<dynamic>).join('\n'),
         contains('检查 Android 注入组件'));
+  });
+
+  test('renders summary table labels in Chinese', () {
+    final projectDir =
+        Directory.systemTemp.createTempSync('html_mapping_writer_labels_');
+    addTearDown(() {
+      if (projectDir.existsSync()) {
+        projectDir.deleteSync(recursive: true);
+      }
+    });
+
+    writeHtmlFeatureMapping(
+      projectPath: projectDir.path,
+      featureId: 'dart_comment_cleanup',
+      featureTitle: 'Dart 源码注释清理',
+      mapping: {
+        'summary': {
+          'scanned_files': 2245,
+          'modified_files': 2241,
+          'removed_comments': 21150,
+          'removed_blank_lines': 48597,
+          'formatted_files': 0,
+          'format_failed_files': 0,
+          'failed_files': 0,
+        },
+      },
+    );
+
+    final html = File(p.join(projectDir.path, unifiedMappingFileName))
+        .readAsStringSync();
+    expect(html, contains('<th>扫描文件数</th>'));
+    expect(html, contains('<th>修改文件数</th>'));
+    expect(html, contains('<th>移除注释数</th>'));
+    expect(html, contains('<th>移除空行数</th>'));
+    expect(html, contains('<th>格式化文件数</th>'));
+    expect(html, contains('<th>格式化失败文件数</th>'));
+    expect(html, contains('<th>失败文件数</th>'));
+    expect(html, isNot(contains('<th>scanned_files</th>')));
   });
 }
 

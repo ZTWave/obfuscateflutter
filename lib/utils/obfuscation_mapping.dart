@@ -4,12 +4,14 @@ import 'dart:io';
 class ObfuscationMapping {
   final String projectName;
   final String createdAt;
-  final Map<String, String> fileRenames; // original basename → obfuscated basename
+  final Map<String, String>
+      fileRenames; // original basename → obfuscated basename
   final List<ProcessedFileEntry> processedFiles;
   final String? keyStoreFile;
   final String? sep;
   final int? sek;
   final Map<String, String> directoryRenames; // original → obfuscated
+  final bool includeStringStats;
 
   ObfuscationMapping({
     required this.projectName,
@@ -20,6 +22,7 @@ class ObfuscationMapping {
     this.sep,
     this.sek,
     this.directoryRenames = const {},
+    this.includeStringStats = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -34,7 +37,8 @@ class ObfuscationMapping {
             'sep': sep,
             'sek': sek,
           },
-        'processed_files': processedFiles.map((f) => f.toJson()).toList(),
+        'processed_files':
+            processedFiles.map((f) => f.toJson(includeStringStats)).toList(),
         'summary': _buildSummary(),
       };
 
@@ -49,7 +53,7 @@ class ObfuscationMapping {
       'total_files_processed': processedFiles.length,
       'total_files_renamed': fileRenames.length,
       'total_dirs_renamed': directoryRenames.length,
-      'total_strings_encrypted': totalStrings,
+      if (includeStringStats) 'total_strings_encrypted': totalStrings,
       'total_imports_rewritten': totalImports,
     };
   }
@@ -71,9 +75,9 @@ class ProcessedFileEntry {
     this.importsRewritten = 0,
   });
 
-  Map<String, dynamic> toJson() => {
+  Map<String, dynamic> toJson([bool includeStringStats = false]) => {
         'path': path,
-        'strings_encrypted': stringsEncrypted,
+        if (includeStringStats) 'strings_encrypted': stringsEncrypted,
         'imports_rewritten': importsRewritten,
       };
 }
@@ -88,7 +92,8 @@ class MappingBuilder {
   String? _sep;
   int? _sek;
 
-  MappingBuilder(this.projectName) : createdAt = DateTime.now().toIso8601String();
+  MappingBuilder(this.projectName)
+      : createdAt = DateTime.now().toIso8601String();
 
   void addFileRename(String original, String obfuscated) {
     _fileRenames[original] = obfuscated;
@@ -98,7 +103,8 @@ class MappingBuilder {
     _directoryRenames[original] = obfuscated;
   }
 
-  void addProcessedFile(String path, int stringsEncrypted, int importsRewritten) {
+  void addProcessedFile(
+      String path, int stringsEncrypted, int importsRewritten) {
     _processedFiles.add(ProcessedFileEntry(
       path: path,
       stringsEncrypted: stringsEncrypted,
@@ -124,6 +130,7 @@ class MappingBuilder {
       keyStoreFile: _keyStoreFile,
       sep: _sep,
       sek: _sek,
+      includeStringStats: _keyStoreFile != null,
     );
   }
 }
