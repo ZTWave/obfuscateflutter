@@ -1,17 +1,30 @@
 # obfuscateflutter
 
-Flutter 项目混淆辅助工具，支持图片字节扰动、图片资源名清理、Android Proguard 字典生成、Dart 字符串加密、AST 文件/目录重命名、随机 Dart 垃圾文件生成、类内垃圾代码注入、Android 垃圾组件/资源生成、iOS Objective-C/Swift AST 垃圾代码注入、iOS 文件/函数/业务方法体结构化差异改写，以及常用 release 包构建。
+`obfuscateflutter` 是一个面向 Flutter 项目的命令行混淆辅助工具。它把 Dart、资源、Android 原生工程和 iOS 原生工程的多类改写集中到一个交互式菜单里执行，并把主要改写结果汇总到统一的 `obfuscation_mapping.html`。
 
-已在 macOS / Windows 测试过基础流程。执行混淆前建议先提交代码或复制一份项目，因为大多数功能会直接修改目标项目文件。
+工具会直接修改目标 Flutter 项目。执行前建议先提交代码、复制项目，或使用临时目录模式 `x`。
 
-## 快速开始
+## 当前能力
+
+- 图片处理：修改图片 MD5、混淆已引用图片名称并清理未引用图片(webp 不支持)。
+- Dart 处理：字符串加密/恢复、AST 文件与目录重命名、随机 Dart 文件生成、类内垃圾代码与字符串注入、源码注释和空行清理。
+- Android 处理：生成 Proguard 字典，生成 Java 四大组件、XML/PNG 资源，并可选执行 Android 自有 package/class/resource 深度命名混淆。
+- iOS 处理：Objective-C/Swift AST 垃圾代码注入、项目文件名替换、内部函数换名、业务方法体结构化差异改写。
+- 报告能力：多数混淆功能写入同一个 `obfuscation_mapping.html`，包含功能分区、summary、完整 mapping JSON、发布汇总指标、跳过项和风险提示。
+- 安全入口：启动时执行预检，检查 Flutter 项目结构、assets、生成文件状态、Git 状态、Android/iOS 目录完整性。
+
+## 安装和启动
+
+在本工具项目目录执行：
 
 ```bash
 dart pub get
 dart run ./bin/obfuscateflutter.dart -d <Flutter项目路径>
 ```
 
-可选传入 dart define 文件，构建 APK/AAB/IPA 时会继续透传：
+如果不传 `-d`，工具会通过 shell 询问或读取当前路径。
+
+可传入 `--dart-define-from-file` 参数；当前入口会解析该参数，保留给构建相关扩展使用：
 
 ```bash
 dart run ./bin/obfuscateflutter.dart \
@@ -19,7 +32,9 @@ dart run ./bin/obfuscateflutter.dart \
   --dart-define-from-file=<define.json>
 ```
 
-启动后按菜单编号选择任务：
+启动后会先打印 Flutter 版本，再执行预检。预检发现阻断项时会停止；发现 Git 未提交、assets 缺失、生成文件疑似过期等问题时会提示，但部分情况仍会进入菜单。
+
+## 菜单
 
 ```text
 1.修改图片MD5
@@ -36,63 +51,92 @@ dart run ./bin/obfuscateflutter.dart \
 12.iOS 内部函数换名
 13.iOS 业务代码结构化差异混淆
 14.清理 Dart 源码注释
-x.在临时生成目录中进行执行上述混淆任务并打包
+
+x.在临时生成目录中执行上述混淆任务（除恢复 String）
 ```
 
-## 功能结果和用法
+## 功能总览
 
 | 编号 | 功能 | 主要结果 | 适用场景 |
 | --- | --- | --- | --- |
-| `1` | 修改图片 MD5 | 直接改写 `pubspec.yaml` assets 下的图片文件，打印处理前后 MD5。 | 需要在视觉变化极小的前提下改变图片二进制特征。 |
-| `2` | 混淆图片名称并清理 | 随机重命名被 Dart 代码引用的图片；删除未检测到引用的图片；同步替换 Dart 字符串中的资源名或资源路径。 | 清理未使用图片，并降低固定资源名特征。 |
-| `3` | 生成 Android Proguard 字典 | 写入 `android/app/dict.txt`，包含 10000 个随机名称。 | 配合 Android `proguard-rules.pro` 的 `-obfuscationdictionary` 等配置使用。 |
-| `4` | 混淆项目中所有 String | 新增或更新 `lib/stren_arg.dart`；将可安全处理的字符串替换为 `desNoStr("...")` 调用；自动补 import；生成 `test/obfuscate_string_debug.dart` 方便调试加解密。 | 隐藏 Dart 源码中的普通字符串字面量。 |
-| `5` | 恢复已混淆 String | 根据 `lib/stren_arg.dart` 中的 `SEP/SEK` 还原 `desNoStr("...")` 字符串；无引用后删除 `stren_arg.dart`。 | 回滚功能4产生的字符串加密改动。 |
-| `6` | 统一混淆 | AST 重写 import/export/part URI，重命名 `lib` 下目录和 Dart 文件，修正 `.g.dart/.freezed.dart` 的 `part of`，输出映射文档。 | 需要可追踪的文件/目录结构混淆。 |
-| `7` | Dart 随机代码注入/保留 | 在 `lib` 下生成随机 Dart 文件；修改 `lib/main.dart` 注入 retain 调用；输出生成映射文档。 | 增加同步可达代码、页面类、方法类和随机 shard 文件。 |
-| `8` | 类内垃圾代码注入 | 向已有类内部插入垃圾成员和轻量 hook；必要时补 import；输出类内注入映射文档。 | 在不额外链接独立工具文件的前提下，让已有业务类产生差异。 |
-| `9` | Android 项目垃圾代码生成 | 在 `android/app/src/main/java` 下生成 Java 四大组件类；生成 XML/PNG 资源；向 Manifest 注册组件；输出映射文档。 | 让 Android 侧无业务调用的组件和资源在打包后保留。 |
-| `10` | iOS Object-C/Swift AST 混淆 | 使用 `xcrun clang/swiftc` 读取 iOS 原生源码结构，在安全方法体内插入 OC/Swift 模板垃圾代码并输出映射文档。 | 让 iOS 侧 Objective-C/Swift 源码产生可追踪差异，同时保持业务逻辑和公开符号稳定。 |
-| `11` | iOS 项目文件名替换 | 重命名项目自有 iOS 源文件并同步更新 Xcode 工程和源码引用。 | 改变 iOS 文件结构特征。 |
-| `12` | iOS 内部函数换名 | 对低风险内部函数、私有 selector 和 Swift private/fileprivate 函数换名。 | 改变内部符号名和调用引用。 |
-| `13` | iOS 业务代码结构化差异混淆 | 对可安全识别的 Objective-C/Swift 业务方法体执行包装跳转、局部抽取和控制流拆分，并输出映射文档。 | 需要改变 iOS 业务代码调用流程和方法体结构。 |
-| `14` | 清理 Dart 源码注释 | 使用 Analyzer token 扫描删除 `lib/**/*.dart` 中的全部注释，包含生成文件和 Analyzer ignore 指令。 | 需要清除 Dart 源码中的普通注释和文档注释。 |
-| `x` | 临时目录执行混淆 | 复制项目到临时目录，依次执行主要混淆步骤（除恢复 String），最后清理 Dart 注释，完成后可选择删除临时目录。 | 希望原项目源码保持干净，只在临时副本中生成混淆结果。 |
+| `1` | 修改图片 MD5 | 改写 `pubspec.yaml` assets 下的图片文件，控制台打印处理前后 MD5。 | 改变图片二进制特征，同时尽量保持视觉变化极小。 |
+| `2` | 混淆图片名称并清理 | 重命名被 Dart 代码引用的图片，删除未检测到引用的图片，同步替换 Dart 字符串中的资源名或路径。 | 降低固定资源名特征并清理无引用图片。 |
+| `3` | 生成 Android Proguard 字典 | 写入 `android/app/dict.txt`，默认 10000 个随机名称。 | 配合 Android Proguard/R8 字典配置。 |
+| `4` | 混淆项目中所有 String | 生成 `lib/stren_arg.dart`，将安全字符串替换为 `desNoStr("...")` 调用，并生成调试测试文件。 | 隐藏 Dart 源码中的普通字符串字面量。 |
+| `5` | 恢复已混淆 String | 将 `desNoStr("...")` 还原为普通字符串，移除无用 import，必要时删除 `stren_arg.dart`。 | 回滚功能 4 的字符串加密改动。 |
+| `6` | 统一混淆 | AST 重写 import/export/part URI，重命名 `lib` 下目录和 Dart 文件，修正生成文件 `part of`。 | 可追踪地改变 Dart 文件和目录结构。 |
+| `7` | Dart 随机代码注入/保留 | 生成随机 Dart 文件，并在 `lib/main.dart` 注入 retain 调用。 | 增加 release 可达的 Dart 代码体量和结构差异。 |
+| `8` | 类内垃圾代码/字符串注入 | 向已有 class 注入垃圾成员、可读字符串和轻量 hook。 | 在业务类内部制造结构差异，减少独立垃圾文件特征。 |
+| `9` | Android 项目垃圾代码生成 | 生成 Java 组件、XML/PNG 资源，注册 Manifest；可选深度重命名。 | 增加 Android 原生侧组件和资源差异。 |
+| `10` | iOS Object-C/Swift AST 混淆 | 使用 clang/swift AST 定位方法体并插入 OC/Swift 垃圾代码。 | 增加 iOS 原生源码差异，保持公开 API 稳定。 |
+| `11` | iOS 项目文件名替换 | 重命名 iOS 自有源码文件并同步源码和 Xcode 工程引用。 | 改变 iOS 文件结构特征。 |
+| `12` | iOS 内部函数换名 | 重命名低风险内部 C/Objective-C/Swift 函数或私有 selector。 | 改变 iOS 内部符号和调用引用。 |
+| `13` | iOS 业务代码结构化差异混淆 | 对安全方法体执行包装跳转、局部抽取、控制流拆分。 | 改变 iOS 业务方法体结构。 |
+| `14` | 清理 Dart 源码注释 | 删除 `lib/**/*.dart` 注释和可移除空行，写入清理 summary。 | 清理源码注释、文档注释和 ignore 指令。 |
+| `x` | 临时目录执行 | 复制项目到同级 `temp_<pubspec_name>`，跳过 `.git` 和 `build`，在副本执行主要混淆步骤。 | 保持原项目源码干净，在临时副本中生成混淆结果。 |
 
-从功能 6 开始，所有会输出映射的功能都会写入同一个固定文件：`obfuscation_mapping.html`。该 HTML 按“功能 -> mapping”分区展示，每个功能区块内部保留原 mapping 的完整字段内容；重复执行同一功能会更新该功能区块，不再生成带时间戳的 JSON 映射文件。
+## 统一报告
+
+除字符串恢复外，入口会在多数功能执行前初始化 `obfuscation_mapping.html`。功能执行后会把 mapping 写入该 HTML 的对应功能区块。
+
+报告包含：
+
+- 发布汇总：混淆前后文件数量、字符串处理数量、资源改名数量、Dart/iOS/Android 注入数量、跳过原因、风险项和人工检查项。
+- 功能分区：每个功能的更新时间、中文 summary 表格和完整 mapping JSON。
+- 稳定数据：HTML 内部保留机器可读 JSON；页面展示层会把常见 summary key 翻译为中文。
+- 文件统计排除目录：`.dart_tool`、`.git`、`.gradle`、`.idea`、`.symlinks`、`.vscode`、`Pods`、`build`、`temp_*`。
+
+重复执行同一功能会更新对应功能区块，不再生成多个分散的时间戳 mapping 文件。当前功能 `13` 是例外：入口会初始化 `obfuscation_mapping.html`，但结构化差异结果仍写入独立的 `ios_structural_diff_mapping_<timestamp>.json`，不会写入 HTML 的功能区块。
+
+## 预检规则
+
+启动时会检查目标项目：
+
+- 必须存在 `pubspec.yaml`，且包含 Flutter 配置和 `lib` 目录。
+- `flutter.assets` 缺失、为空或路径不存在时给出提示。
+- 如果项目使用 `build_runner`，会检查 `.g.dart`、`.freezed.dart`、`.gr.dart` 是否缺失或可能过期。
+- Git 非干净状态会提示，建议先提交、暂存或清理。
+- Android 功能依赖 `android/app/build.gradle` 或 `build.gradle.kts`，以及 `android/app/src/main/AndroidManifest.xml`。
+- iOS 功能依赖 `ios/Runner.xcodeproj` 和 `ios/Runner/Info.plist`。
+
+预检只保证基础结构可用，不替代混淆后的 `dart analyze`、测试和真机构建验证。
 
 ## 功能说明
 
 ### 1. 修改图片 MD5
 
-读取 `pubspec.yaml` 中声明的 assets 目录，处理 `.png`、`.jpg`、`.jpeg`、`.webp` 文件。
+读取 `pubspec.yaml` 中声明的 assets，处理 `.png`、`.jpg`、`.jpeg`、`.webp`。
 
-结果：
+处理策略：
 
-- 可解码图片会进行轻微像素扰动：亮度约 `±1.5`、对比度约 `±0.5%`、可选 `±1` 噪声。
-- PNG/JPEG 会重新编码写回原文件。
-- 无法解码或暂不支持重新编码的格式会追加少量随机字节。
-- 控制台输出每张图片处理前后的 MD5。
+- 可解码图片会做轻微像素扰动，再重新编码写回。
+- PNG/JPEG 会尽量重新编码。
+- 无法解码、像素访问失败或编码失败时，会追加少量随机字节作为兜底。
+- assets 配置既可以是文件，也可以是目录。
 
-注意：该功能是原地修改图片，不会生成备份。
+该功能原地修改图片，不生成备份。
 
 ### 2. 混淆图片名称并清理
 
-读取 assets 图片，生成随机文件名，然后扫描 `lib/**/*.dart` 替换常见图片引用写法。
+扫描 assets 图片并检查 `lib/**/*.dart` 中的常见字符串引用。
 
 结果：
 
-- 被检测到引用的图片会被重命名。
-- 未检测到引用的图片会被删除。
+- 被检测到引用的图片会随机重命名。
+- 未检测到引用的图片会删除。
 - Dart 代码中匹配到的 `'xxx.png'`、`"xxx.png"`、`'assets/path/xxx.png'`、`"assets/path/xxx.png"` 会同步替换。
 
-注意：当前是字符串匹配，不是 AST 资源追踪。动态拼接、服务端下发资源名、非 Dart 文件里的引用可能无法识别。
+当前不是完整 AST 资源追踪。动态拼接、服务端下发资源名、非 Dart 文件引用、原生工程引用需要人工复核。
 
 ### 3. 生成 Android Proguard 字典
 
-在目标 Flutter 项目的 `android/app/dict.txt` 写入 10000 个随机 key。
+写入目标项目：
 
-常见接入方式是在 Android Proguard 配置中引用：
+```text
+android/app/dict.txt
+```
+
+常见接入方式：
 
 ```proguard
 -obfuscationdictionary dict.txt
@@ -102,17 +146,16 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 
 ### 4. 混淆项目中所有 String
 
-扫描 `lib/**/*.dart`，跳过 `.g.dart`、`.freezed.dart` 和生成的 `lib/stren_arg.dart`。使用 analyzer AST 查找可安全替换的普通字符串字面量。
+扫描 `lib/**/*.dart`，跳过 `.g.dart`、`.freezed.dart` 和生成的 `lib/stren_arg.dart`。工具通过 analyzer AST 判断可替换的普通字符串字面量。
 
 结果：
 
-- 生成 `lib/stren_arg.dart`，保存 `SEP`、`SEK` 和 `desNoStr()` 解密函数。
-- 普通字符串会被替换为 `desNoStr("<SEP+加密文本>")`。
+- 生成 `lib/stren_arg.dart`，保存 `SEP`、`SEK` 和 `desNoStr()`。
+- 普通字符串替换为 `desNoStr("<SEP+加密文本>")`。
 - 自动插入 `import 'package:<pubName>/stren_arg.dart';`，并保证 import 位于 `part` 之前。
-- 生成 `test/obfuscate_string_debug.dart`，其中包含 `ObfuscateStringTest.encrypt(text)`、`ObfuscateStringTest.decrypt(encrypted)`、`ObfuscateStringTest.inspect(text)` 和 `ObfuscateStringTest.verify(text)`，并内置 `test("test desNoStr", () { ... })` 示例。
-- 可在被混淆项目根目录运行 `flutter test test/obfuscate_string_debug.dart` 直接查看 `print` 出来的解密结果，不需要启动 App。
+- 生成 `test/obfuscate_string_debug.dart`，可运行 `flutter test test/obfuscate_string_debug.dart` 查看加解密结果。
 
-会跳过的典型场景：
+会跳过：
 
 - import/export/part URI。
 - 注解、常量表达式、const 上下文。
@@ -131,185 +174,36 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 
 ### 6. 统一混淆
 
-统一混淆是当前推荐的文件/目录重命名入口。旧的独立“重命名 lib 目录名称”和“重命名所有文件名”菜单已移除。
+统一混淆是当前推荐的 Dart 文件/目录重命名入口。
 
 处理范围：
 
 - `lib/**/*.dart`
 - 跳过 `.g.dart`、`.freezed.dart`
 - 跳过 `lib/stren_arg.dart`
+- 保留 `main.dart` 文件名
 
 结果：
 
-- 重命名 `lib` 下目录。
-- 重命名 Dart 文件，保留 `main.dart` 文件名。
-- 使用 AST 重写 import/export/part 中的 URI。
+- 重命名 `lib` 下目录和 Dart 文件。
+- 使用 AST 重写 import/export/part URI。
 - 修正同目录 `.g.dart/.freezed.dart` 中的 `part of 'old.dart';`。
-- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“统一混淆”区块。
+- 写入 `obfuscation_mapping.html` 的“统一混淆”区块。
 
-映射文档记录：
-
-- `file_renames`
-- `directory_renames`
-- 每个文件的 import 重写数量
-- 汇总统计信息
-
-注意：如果项目中存在非标准代码生成关系、字符串拼接 import、或构建脚本硬编码文件路径，需要手动复核。
+如果项目中存在非标准代码生成关系、字符串拼接 import、构建脚本硬编码文件路径，需要混淆后人工复核。
 
 ### 7. Dart 随机代码注入/保留
 
-该功能会读取配置，在 `lib` 下生成随机 Dart 文件，并在 `lib/main.dart` 中注入一次 `obfDartNoiseRetain()` 调用，避免 release tree shaking 移除生成代码。
+读取 `obfuscate_dart_noise.json` 顶层配置，在 `lib` 下生成随机 Dart 文件，并在 `lib/main.dart` 注入 `obfDartNoiseRetain()` 调用，避免 release tree shaking 移除生成代码。
 
 结果：
 
 - 生成页面类、同步 worker 类和 shard 工具函数。
-- 垃圾文件会尽量分散到项目已有目录和随机目录中，避免单一固定目录特征。
-- 同一个 shard 文件内部会轮换不同函数模板，避免一整个文件重复同一种函数结构。
-- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“Dart 随机代码注入/保留”区块。
+- 垃圾文件尽量分散到项目已有目录和随机目录中。
+- 同一个 shard 文件会轮换不同函数模板，降低重复结构。
+- 写入 `obfuscation_mapping.html` 的“Dart随机代码注入/保留”区块。
 
-映射文档记录：
-
-- 实际使用的配置文件。
-- 入口文件路径。
-- 生成文件列表。
-- 页面类、普通类、方法列表。
-- snippet 使用次数。
-
-### 8. 类内垃圾代码注入
-
-该功能使用 `obfuscate_dart_noise.json` 中的 `classInnerNoise` 配置，扫描已有 Dart 类，把垃圾成员和轻量 hook 插入当前文件和当前类内部。
-
-结果：
-
-- 不创建外部链接工具文件。
-- 垃圾成员插入到已有 class 内。
-- hook 插入到普通 block-bodied 方法或安全的非 const 构造函数内部。
-- 每次插入会随机化成员名、局部变量名、seed、分支和表达式，避免完全复制。
-- 必要时只追加缺失 import，并保留已有 import 的 `show/hide/as` 子句。
-- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“类内垃圾代码注入”区块。
-
-会跳过：
-
-- `.g.dart`、`.freezed.dart`、`.gr.dart` 等生成文件。
-- const 构造、抽象方法、getter/setter、operator、expression-bodied 方法。
-- 无法安全解析或没有可注入 class/method 的文件。
-
-
-### 9. Android项目垃圾代码生成
-
-## Dart 随机代码注入配置
-
-菜单 `10` 和 `11` 共用 `obfuscate_dart_noise.json`。
-
-配置读取顺序：
-
-1. 优先读取目标 Flutter 项目根目录下的 `obfuscate_dart_noise.json`
-2. 如果目标项目没有该文件，则读取本工具目录下的默认 `obfuscate_dart_noise.json`
-
-示例：
-
-```json
-{
-  "pageCount": 6,
-  "classCount": 12,
-  "methodCountPerClass": 8,
-  "template": "page_sync_class",
-  "outputDir": "lib/dart_noise",
-  "garbageFileCountMin": 30,
-  "garbageFileCountMax": 50,
-  "snippets": [
-    "widget_layout_page",
-    "sync_math",
-    "sync_string",
-    "sync_list",
-    "sync_model",
-    "sync_enum_switch",
-    "custom_page_shell",
-    "custom_sync_mix"
-  ],
-  "snippetWeights": {
-    "widget_layout_page": 2,
-    "sync_math": 3,
-    "sync_string": 2,
-    "sync_list": 2,
-    "sync_model": 2,
-    "sync_enum_switch": 1,
-    "custom_sync_mix": 2
-  },
-  "classInnerNoise": {
-    "enabled": true,
-    "targetRatio": 1.0,
-    "executionPolicy": "referenceOnly",
-    "maxTargetLines": 8000,
-    "maxMembersPerClass": 16,
-    "maxHooksPerFile": 30,
-    "stringNoise": {
-      "enabled": true,
-      "memberStringCountPerClass": [2, 6],
-      "localStringCountPerHook": [0, 3],
-      "minLength": 6,
-      "maxLength": 96,
-      "templates": [
-        {
-          "id": "session_word_seed",
-          "value": "session_{{word}}_{{seed}}"
-        },
-        {
-          "id": "trace_context",
-          "value": "trace.{{className}}.{{methodName}}.{{index}}"
-        },
-        {
-          "id": "cache_ready",
-          "value": "cache {{noun}} ready {{seed}}"
-        }
-      ],
-      "templateWeights": {
-        "session_word_seed": 2,
-        "trace_context": 3,
-        "cache_ready": 2
-      }
-    },
-    "skipFiles": [
-      "**/*.g.dart",
-      "**/*.freezed.dart",
-      "**/*.gr.dart"
-    ],
-    "templateGroups": {
-      "executedLightweight": [
-        "sync_hash",
-        "sync_switch"
-      ],
-      "retainedOnly": [
-        "async_future",
-        "timer_stub",
-        "file_io_stub",
-        "network_stub",
-        "platform_channel_stub",
-        "navigator_stub",
-        "set_state_stub",
-        "run_app_stub",
-        "debug_log_stub"
-      ]
-    }
-  },
-  "customTemplates": {
-    "pageBodies": [
-      {
-        "id": "custom_page_shell",
-        "body": "return const SizedBox(width: {{width}}, height: {{height}});"
-      }
-    ],
-    "methodBodies": [
-      {
-        "id": "custom_sync_mix",
-        "body": "final mixed = input + seed + {{salt}};\nreturn (mixed * {{shift}}) & 0x3fffffff;"
-      }
-    ]
-  }
-}
-```
-
-### 配置字段
+常用配置字段：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -318,440 +212,142 @@ x.在临时生成目录中进行执行上述混淆任务并打包
 | `methodCountPerClass` | 每个随机类内生成的同步方法数量。 |
 | `template` | 当前固定为 `page_sync_class`。 |
 | `outputDir` | 兼容字段，必须位于 `lib` 下；当前生成策略会优先分散到项目目录。 |
-| `garbageFileCountMin` | 本次生成垃圾 Dart 文件数量下限。 |
-| `garbageFileCountMax` | 本次生成垃圾 Dart 文件数量上限。 |
+| `garbageFileCountMin` / `garbageFileCountMax` | 本次生成垃圾 Dart 文件数量范围。 |
 | `snippets` | 启用的内置片段或自定义模板 `id`。 |
 | `snippetWeights` | 控制片段选择权重，值越高越容易被选中。 |
-| `customTemplates.pageBodies` | 自定义页面 `build` 方法体模板。 |
-| `customTemplates.methodBodies` | 自定义同步方法体模板。 |
+| `customTemplates.pageBodies` | 自定义页面 `build` 方法体模板，必须返回 `Widget`。 |
+| `customTemplates.methodBodies` | 自定义同步方法体模板，必须返回 `int`。 |
 
-### 内置 snippets
+内置 snippet 包含 `widget_empty_page`、`widget_layout_page`、`sync_math`、`sync_string`、`sync_list`、`sync_model`、`sync_enum_switch`。默认配置里还包含大量 `custom_page_*` 和 `custom_sync_*` 模板。
 
-| snippet | 类型 | 说明 |
-| --- | --- | --- |
-| `widget_empty_page` | 页面 | 生成轻量 `StatelessWidget`，返回空组件。 |
-| `widget_layout_page` | 页面 | 生成包含 `Padding`、`Row`、`SizedBox` 的轻量布局。 |
-| `sync_math` | 方法 | 生成同步整数计算和位运算。 |
-| `sync_string` | 方法 | 生成同步字符串和 `codeUnits` 混合计算。 |
-| `sync_list` | 方法 | 生成同步 `List<int>.generate` 和 fold 计算。 |
-| `sync_model` | 方法 | 生成 model 类、`copyWith` 和同步引用。 |
-| `sync_enum_switch` | 方法 | 生成 enum 和 switch 分支计算。 |
-
-### 自定义模板
-
-自定义模板通过 `customTemplates` 配置，并在 `snippets` 中引用其 `id`。
-
-页面模板写在 `pageBodies` 中，模板内容会放入 `Widget build(BuildContext context)` 方法体内，必须返回一个 `Widget`：
-
-```json
-{
-  "id": "custom_page_shell",
-  "body": "return const SizedBox(width: {{width}}, height: {{height}});"
-}
-```
-
-方法模板写在 `methodBodies` 中，模板内容会放入 `int methodName(int input)` 方法体内，必须返回 `int`：
-
-```json
-{
-  "id": "custom_sync_mix",
-  "body": "final mixed = input + seed + {{salt}};\nreturn (mixed * {{shift}}) & 0x3fffffff;"
-}
-```
-
-支持的占位符：
-
-| 占位符 | 可用位置 | 说明 |
-| --- | --- | --- |
-| `{{width}}` | 页面模板 | 随机宽度。 |
-| `{{height}}` | 页面模板 | 随机高度。 |
-| `{{padding}}` | 页面模板 | 随机 padding。 |
-| `{{salt}}` | 方法模板 | 随机整数盐值。 |
-| `{{shift}}` | 方法模板 | 随机位移值。 |
-
-为保证生成代码稳定且不影响主流程，自定义模板禁止包含：
+自定义模板禁止包含：
 
 ```text
 Future, Stream, async, await, Timer, import, export, part, dart:io, dart:async, @pragma
 ```
 
-### 类内垃圾代码配置
+### 8. 类内垃圾代码/字符串注入
+
+读取 `obfuscate_dart_noise.json` 中的 `classInnerNoise` 配置，扫描已有 Dart 类，把垃圾成员、可读字符串和轻量 hook 插入当前文件和当前类内部。
+
+结果：
+
+- 不创建外部链接工具文件。
+- 垃圾成员插入已有 class。
+- hook 插入普通 block-bodied 方法或安全的非 const 构造函数。
+- 每次随机化成员名、局部变量名、seed、分支和表达式。
+- 必要时追加缺失 import，并保留已有 import 的 `show/hide/as` 子句。
+- 写入 `obfuscation_mapping.html` 的“类内垃圾代码/字符串注入”区块。
+
+主要配置：
 
 | 字段 | 说明 |
 | --- | --- |
-| `classInnerNoise.enabled` | 是否启用类内注入。菜单 11 执行时为 `false` 会直接跳过。 |
-| `classInnerNoise.targetRatio` | 目标注入代码量比例。默认 `1.0`，表示尽量接近原 `lib` 业务 Dart 非空行数的 1 倍。 |
-| `classInnerNoise.executionPolicy` | 支持 `referenceOnly` 和 `guardedRare`。默认 `referenceOnly`，高风险模板只做引用保留。 |
+| `classInnerNoise.enabled` | 是否启用类内注入。 |
+| `classInnerNoise.targetRatio` | 目标注入代码量比例。 |
+| `classInnerNoise.executionPolicy` | 支持 `referenceOnly` 和 `guardedRare`。 |
 | `classInnerNoise.maxTargetLines` | 本次最多新增源码行数。 |
-| `classInnerNoise.maxMembersPerClass` | 单个类内最多新增垃圾成员数量。 |
-| `classInnerNoise.maxHooksPerFile` | 单个 Dart 文件最多插入业务 hook 数量。 |
-| `classInnerNoise.stringNoise.enabled` | 是否启用可读垃圾 String 注入。默认启用。 |
-| `classInnerNoise.stringNoise.memberStringCountPerClass` | 每个目标 class 内生成的成员字符串数量范围，例如 `[2, 6]`。 |
-| `classInnerNoise.stringNoise.localStringCountPerHook` | 每个 hook 点插入的方法局部字符串数量范围，例如 `[0, 3]`。 |
-| `classInnerNoise.stringNoise.templates` | 可读字符串模板，使用 `{ "id": "...", "value": "..." }`。 |
-| `classInnerNoise.stringNoise.templateWeights` | 字符串模板权重。 |
-| `classInnerNoise.stringNoise.minLength` / `maxLength` | 渲染后字符串长度边界。 |
+| `classInnerNoise.maxMembersPerClass` | 单个类最多新增垃圾成员数量。 |
+| `classInnerNoise.maxHooksPerFile` | 单个 Dart 文件最多插入 hook 数量。 |
+| `classInnerNoise.stringNoise.*` | 控制可读垃圾字符串模板、数量和长度。 |
 | `classInnerNoise.skipFiles` | 跳过文件规则。 |
 | `classInnerNoise.templateGroups.executedLightweight` | 可被业务 hook 轻量触达的同步模板。 |
 | `classInnerNoise.templateGroups.retainedOnly` | 只被 retain 函数引用的模板。 |
 
-类内 String 注入会保持明文可读，不使用功能4的 `des()` 加密。生成形态包括：
-
-```dart
-static const String _obfXxxText0 = 'trace.Repo.load.0';
-static const List<String> _obfXxxTexts = [_obfXxxText0];
-static const Map<String, String> _obfXxxTextMap = {'k0': _obfXxxText0};
-
-final obfTextAbc = 'cache payload ready 123456';
-var obfTextSeed = obfTextAbc.codeUnits.fold<int>(seed, ...);
-```
-
-支持的 String 模板占位符：
-
-| 占位符 | 说明 |
-| --- | --- |
-| `{{prefix}}` | 本次 class 注入前缀。 |
-| `{{className}}` | 当前类名。 |
-| `{{methodName}}` | 当前方法名；成员字符串使用 `member`。 |
-| `{{seed}}` | 随机数字。 |
-| `{{word}}` / `{{verb}}` / `{{noun}}` | 内置中性可读词库。 |
-| `{{index}}` | 当前字符串序号。 |
-
-String 模板只能是普通文本，不允许换行、分号、`import`、`part`、`class`、`Future`、`await` 等代码片段。菜单 11 的映射文档会额外输出 `string_templates_used` 和 `strings_injected`，用于追踪注入的模板、位置和实际字符串。
-
-类内模板和自动 import：
-
-| 模板 | 类型 | 自动 import | 说明 |
-| --- | --- | --- | --- |
-| `sync_hash` | 轻量 | 无 | 同步 hash/codeUnits 计算。 |
-| `sync_switch` | 轻量 | 无 | 同步 switch 分支计算。 |
-| `async_future` | 保留 | `dart:async` | 生成 async/Future 方法体，只被引用。 |
-| `timer_stub` | 保留 | `dart:async`、`package:flutter/widgets.dart` | 生成 Timer/debugPrint 方法体，只被引用。 |
-| `file_io_stub` | 保留 | `dart:io` | 生成 File 引用方法体，只被引用。 |
-| `network_stub` | 保留 | `dart:io` | 生成 HttpClient 引用方法体，只被引用。 |
-| `platform_channel_stub` | 保留 | `package:flutter/services.dart` | 生成 MethodChannel 引用方法体，只被引用。 |
-| `navigator_stub` | 保留 | `package:flutter/widgets.dart` | 生成 Navigator 引用方法体，只被引用。 |
-| `set_state_stub` | 保留 | `package:flutter/widgets.dart` | 生成 setState 动态引用方法体，只被引用。 |
-| `run_app_stub` | 保留 | `package:flutter/widgets.dart` | 生成 runApp 方法体，只被引用。 |
-| `debug_log_stub` | 保留 | `package:flutter/widgets.dart` | 生成 debugPrint 方法体，只被引用。 |
+会跳过 `.g.dart`、`.freezed.dart`、`.gr.dart` 等生成文件，以及 const 构造、抽象方法、getter/setter、operator、expression-bodied 方法等不适合注入的位置。
 
 ### 9. Android 项目垃圾代码生成
 
-该功能使用 `obfuscate_dart_noise.json` 中的 `androidNoise` 配置，生成 Android 原生侧 Java 垃圾组件、XML 资源和 PNG 图片资源。
+读取 `obfuscate_dart_noise.json` 中的 `androidNoise` 配置，生成 Android 原生侧 Java 组件、XML 资源和 PNG 图片资源。
 
 结果：
 
 - 生成 Java 源码到 `android/app/src/main/java/<namespace>/<packageSegment>/`。
 - 自动解析 `android/app/build.gradle(.kts)` 中的 `namespace`；没有 namespace 时兜底读取 Manifest `package`。
-- 生成 Activity、Service、BroadcastReceiver、ContentProvider，并注册到 `android/app/src/main/AndroidManifest.xml`。
-- 组件全部使用 `android:exported="false"`，不添加 `intent-filter`，不会暴露外部启动入口。
-- 默认资源名使用可读业务词，例如 `activity_panel.xml`、`session_marker.xml`、`profile_badge.png`，避免 `noise/obf` 这类特征字段。
-- Manifest 使用 `<!-- obfuscateflutter: android-noise start/end -->` 标记，重复执行会替换旧区块，不会重复注册。
+- 生成 Activity、Service、BroadcastReceiver、ContentProvider，并注册到 Manifest。
+- 组件使用 `android:exported="false"`，不添加 `intent-filter`。
+- Manifest 使用 `<!-- obfuscateflutter: android-noise start/end -->` 标记，重复执行会替换旧区块。
 - 可选开启 `deepObfuscation`，对 Android 自有 package、class、resource 名称做更深的业务语义伪装。
-- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“Android 项目垃圾代码生成”区块，记录生成类、资源、Manifest 注入项、深度重命名、跳过项和配置来源。
+- 写入 `obfuscation_mapping.html` 的“Android项目垃圾代码生成”区块。
 
-默认 Java 类名和方法名会使用业务语义词，例如 `AnalyticsSessionActivity`、`PaymentRouteService`、`collectSessionSignal`。可以通过配置模板调整：
-
-```json
-{
-  "androidNoise": {
-    "enabled": true,
-    "componentCount": {
-      "activity": 4,
-      "service": 4,
-      "receiver": 4,
-      "provider": 2
-    },
-    "packageSegment": "platform",
-    "nameTemplates": {
-      "classNames": [
-        "AnalyticsSession{{component}}",
-        "PaymentRoute{{component}}"
-      ],
-      "methodNames": [
-        "collectSessionSignal",
-        "mergePaymentRoute"
-      ]
-    },
-    "stringTemplates": [
-      "session {{component}} payload {{index}}",
-      "payment route {{className}} {{index}}"
-    ],
-    "generateResources": {
-      "xml": true,
-      "images": true
-    },
-    "deepObfuscation": {
-      "enabled": false,
-      "skipFiles": [
-        "**/GeneratedPluginRegistrant.java",
-        "**/GeneratedPluginRegistrant.kt",
-        "**/MainActivity.java",
-        "**/MainActivity.kt"
-      ],
-      "skipClasses": [
-        "GeneratedPluginRegistrant",
-        "MainActivity"
-      ],
-      "skipPackages": [],
-      "skipResources": [
-        "ic_launcher*",
-        "mipmap/ic_launcher*"
-      ],
-      "packageTemplates": [
-        "account.{{word}}"
-      ],
-      "classTemplates": [
-        "Session{{className}}"
-      ],
-      "resourceTemplates": [
-        "profile_{{name}}"
-      ],
-      "semanticWords": [
-        "profile",
-        "session",
-        "account"
-      ],
-      "reflectionRewrite": {
-        "enabled": true,
-        "strict": true
-      }
-    },
-    "resourceTemplates": {
-      "drawableXml": [
-        {
-          "name": "activity_panel",
-          "body": "<shape xmlns:android=\"http://schemas.android.com/apk/res/android\"><solid android:color=\"#01000000\" /></shape>"
-        }
-      ],
-      "layoutXml": [
-        {
-          "name": "session_marker",
-          "body": "<FrameLayout xmlns:android=\"http://schemas.android.com/apk/res/android\" android:layout_width=\"1dp\" android:layout_height=\"1dp\" android:background=\"@drawable/{{drawableName}}\" />"
-        }
-      ],
-      "stringValues": [
-        {
-          "name": "session_title",
-          "value": "Session {{index}}"
-        },
-        {
-          "name": "profile_state",
-          "value": "Profile route {{packageName}}"
-        }
-      ]
-    }
-  }
-}
-```
+主要配置：
 
 | 字段 | 说明 |
 | --- | --- |
 | `androidNoise.enabled` | 是否启用 Android 垃圾代码生成。 |
-| `androidNoise.componentCount.activity/service/receiver/provider` | 四大组件各自生成数量，范围 `0..100`。 |
-| `androidNoise.packageSegment` | 追加到 Android namespace 后的包名片段，例如 `platform`。 |
-| `androidNoise.nameTemplates.classNames` | 类名模板；`{{component}}` 会替换为 `Activity/Service/Receiver/Provider`。 |
-| `androidNoise.nameTemplates.methodNames` | 方法名模板；支持 `{{index}}`。 |
+| `androidNoise.componentCount.activity/service/receiver/provider` | 四大组件生成数量，范围 `0..100`。 |
+| `androidNoise.packageSegment` | 追加到 Android namespace 后的包名片段。 |
+| `androidNoise.nameTemplates.*` | 类名和方法名模板。 |
 | `androidNoise.stringTemplates` | 生成方法内使用的可读字符串模板。 |
 | `androidNoise.generateResources.xml/images` | 是否生成 XML 和 PNG 资源。 |
-| `androidNoise.resourceTemplates.drawableXml/layoutXml` | XML 资源模板数组，`name` 是不带扩展名的 Android 资源名，`body` 是写入文件的 XML 内容。 |
-| `androidNoise.resourceTemplates.stringValues` | `strings.xml` 字符串模板数组，`name` 是字符串资源名，`value` 支持 `{{packageName}}`、`{{namespace}}`、`{{resourceName}}`、`{{drawableName}}`、`{{index}}`。 |
-| `androidNoise.deepObfuscation.enabled` | 是否开启 Android 全工程深度命名混淆；默认关闭。 |
-| `androidNoise.deepObfuscation.skipFiles/skipClasses/skipPackages/skipResources` | 跳过模板；默认保护 `GeneratedPluginRegistrant`、`MainActivity` 和 launcher 图标。 |
-| `androidNoise.deepObfuscation.packageTemplates/classTemplates/resourceTemplates/semanticWords` | 深度混淆名称模板；使用业务语义词，不生成 `noise/obf` 字段。 |
-| `androidNoise.deepObfuscation.reflectionRewrite.enabled/strict` | 是否重写明确反射 API 中的完整类名字符串；严格模式不会改普通字符串。 |
+| `androidNoise.resourceTemplates.*` | XML 和 strings.xml 资源模板。 |
+| `androidNoise.deepObfuscation.enabled` | 是否开启 Android 全工程深度命名混淆。 |
+| `androidNoise.deepObfuscation.skip*` | 跳过文件、类、包和资源。 |
+| `androidNoise.deepObfuscation.reflectionRewrite.*` | 是否重写明确反射 API 中的完整类名字符串。 |
 
-深度混淆会同步更新：
-
-- Java/Kotlin 的 `package`、`import`、全限定类名、`R.type.name`。
-- `AndroidManifest.xml` 和 `res/**/*.xml` 中的组件类名、自定义 View 标签、`@layout/@drawable/...` 等资源引用。
-- 明确反射上下文中的完整类名字符串，例如 `Class.forName("...")`、`loadClass("...")`、`Intent.setClassName(...)`、`ComponentName(...)`。
-
-普通字符串、日志文案、URL、JSON key 不会做全局替换。拼接形式的反射字符串不会自动修改，会写入 mapping 的 `warnings`。
-
-XML 资源模板支持占位符：
-
-| 占位符 | 说明 |
-| --- | --- |
-| `{{namespace}}` | Android namespace。 |
-| `{{packageName}}` | 生成 Java 组件包名。 |
-| `{{resourceName}}` | 当前 XML 资源名。 |
-| `{{drawableName}}` | 第一个 drawable XML 资源名，便于 layout 引用。 |
-| `{{index}}` | 当前模板序号。 |
+深度混淆会同步更新 Java/Kotlin package/import/全限定类名、Manifest、`res/**/*.xml`、`R.type.name` 和明确反射上下文。普通字符串、日志文案、URL、JSON key 不做全局替换。
 
 ### 10. iOS Object-C/Swift AST 混淆
 
-该功能使用 `obfuscate_dart_noise.json` 中的 `iosNoise` 配置，扫描 `ios` 目录下的 `.m`、`.mm` 和 `.swift` 文件。Objective-C/Objective-C++ 通过 `xcrun clang -Xclang -ast-dump=json` 读取 AST，Swift 通过 `xcrun swiftc -dump-ast -parse` 读取 AST。
+读取 `obfuscate_dart_noise.json` 中的 `iosNoise` 配置，扫描 `ios` 目录下的 `.m`、`.mm` 和 `.swift` 文件。Objective-C/Objective-C++ 通过 `xcrun clang -Xclang -ast-dump=json` 读取 AST，Swift 通过 `xcrun swiftc -dump-ast -parse` 读取 AST。
 
 结果：
 
 - 只在可安全定位的方法或函数体内插入无用代码。
-- Objective-C 和 Swift 使用不同模板组，分别生成对应语言的局部变量、字符串表和受控分支。
+- Objective-C 和 Swift 使用不同模板组。
 - 默认跳过 `Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
 - 默认不改类名、方法签名、文件名、公开 API、import 或业务语句顺序。
-- 插入代码不再输出 `obfuscateflutter: ios-noise` 注释；重复执行时仍会跳过已包含旧 marker，或命中同语言模板组任意 `dedupePatterns` 的方法体，避免重复注入。
-- 成功写入源码后会尝试格式化被修改的文件：Objective-C/Objective-C++ 使用 `xcrun clang-format -i`，Swift 使用 `xcrun swift-format format --in-place`；格式化工具不可用时不会中断混淆。
-- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“iOS Object-C/Swift AST 混淆”区块，记录 AST 命令、格式化命令、扫描文件、注入点、模板、跳过原因和汇总统计。
+- 重复执行时通过旧 marker 或模板 `dedupePatterns` 跳过已注入方法体。
+- 成功写入源码后会尝试格式化被修改文件；格式化工具不可用时不阻断。
+- 写入 `obfuscation_mapping.html` 的“iOS Object-C/Swift AST 混淆”区块。
 
-常用配置：
-
-```json
-{
-  "iosNoise": {
-    "enabled": true,
-    "targetRatio": 0.4,
-    "maxTargetLines": 20000,
-    "maxInsertionsPerFile": 20,
-    "astFallback": "skip",
-    "templateGroups": {
-      "objectiveC": [
-        "oc_string_table",
-        "oc_numeric_fold",
-        "oc_guarded_branch"
-      ],
-      "swift": [
-        "swift_string_table",
-        "swift_numeric_fold",
-        "swift_guarded_branch"
-      ]
-    },
-    "codeTemplates": [
-      {
-        "id": "oc_string_table",
-        "language": "objectiveC",
-        "dedupePatterns": [
-          "obfIosText",
-          "obfIosList"
-        ],
-        "body": "NSString *obfIosText{{index}} = @\"{{literalText}}\";\nNSArray *obfIosList{{index}} = @[obfIosText{{index}}, @\"{{literalId}}\"];\nif ([obfIosList{{index}} count] == 912347) { NSLog(@\"%@\", obfIosText{{index}}); }"
-      },
-      {
-        "id": "swift_string_table",
-        "language": "swift",
-        "dedupePatterns": [
-          "obfIosText",
-          "obfIosList"
-        ],
-        "body": "let obfIosText{{index}} = \"{{literalText}}\"\nlet obfIosList{{index}} = [obfIosText{{index}}, \"{{literalId}}\"]\nif obfIosList{{index}}.count == 912347 { print(obfIosText{{index}}) }"
-      }
-    ]
-  }
-}
-```
+主要配置：
 
 | 字段 | 说明 |
 | --- | --- |
 | `iosNoise.enabled` | 是否启用 iOS AST 混淆。 |
-| `iosNoise.targetRatio` | 目标注入代码量比例；每个可处理文件至少会获得一次安全注入机会，之后受该软预算约束。 |
+| `iosNoise.targetRatio` | 目标注入代码量比例。 |
 | `iosNoise.maxTargetLines` | 本次最多新增源码行数硬上限。 |
 | `iosNoise.maxInsertionsPerFile` | 单个文件最多注入次数。 |
-| `iosNoise.astFallback` | AST 命令失败时的策略；当前仅支持 `skip`。 |
+| `iosNoise.astFallback` | AST 命令失败策略；当前支持 `skip`。 |
 | `iosNoise.skipFiles` | 跳过文件规则。 |
-| `iosNoise.templateGroups.objectiveC` | Objective-C/Objective-C++ 模板列表。 |
-| `iosNoise.templateGroups.swift` | Swift 模板列表。 |
+| `iosNoise.templateGroups.objectiveC/swift` | 对应语言的模板列表。 |
 | `iosNoise.stringTemplates` | 模板内使用的可读字符串模板。 |
-| `iosNoise.codeTemplates` | 可配置垃圾代码模板；`id` 被 `templateGroups` 引用，`language` 为 `objectiveC` 或 `swift`，`dedupePatterns` 用于重复执行时识别已插入代码，`body` 是要插入到方法体内的代码。 |
-
-`iosNoise.codeTemplates.body` 支持这些占位符：`{{index}}`、`{{seed}}`、`{{seedPlusIndex}}`、`{{literalText}}`、`{{literalId}}`、`{{fileName}}`、`{{methodName}}`。字符串类占位符会按 iOS 字符串字面量转义，模板本身不需要写任何 `obfuscateflutter: ios-noise` 注释。
-
-`iosNoise.codeTemplates.dedupePatterns` 是普通字符串片段数组。工具准备向某个方法体插入垃圾代码前，会检查方法体中是否已包含同语言模板组里任意模板的任意片段；命中则跳过该方法体。自定义模板建议配置 1-3 个稳定且不受格式化空白影响的片段，例如变量核心名或固定 helper 调用，不要包含 `{{index}}` 这类每次执行都会变化的内容。
+| `iosNoise.codeTemplates` | 可配置垃圾代码模板。 |
 
 ### 11. iOS 项目文件名替换
 
-该功能使用 `obfuscate_dart_noise.json` 中的 `iosFileRename` 配置，扫描 `ios` 目录下的 `.m`、`.h`、`.mm` 和 `.swift` 文件，把文件名替换为有意义的业务风格名称，并同步更新源码和 `project.pbxproj` 中的文件名引用。
+读取 `obfuscate_dart_noise.json` 中的 `iosFileRename` 配置，扫描 `ios` 目录下的 `.m`、`.h`、`.mm` 和 `.swift` 文件，把文件名替换为业务风格名称，并同步更新源码和 `project.pbxproj` 引用。
 
 结果：
 
-- `.h/.m/.mm` 同 basename 成组重命名，保持扩展名不变；`.swift` 单文件重命名。
+- `.h/.m/.mm` 同 basename 成组重命名，`.swift` 单文件重命名。
 - 默认跳过 `Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
 - 只改文件名和文件名引用，不改 Objective-C/Swift 类名、方法名、公开 API 或业务逻辑。
-- 更新 `#import "OldName.h"`、`#include "OldName.h"`、`#import <.../OldName.h>`、完整文件名字符串和 `project.pbxproj` 文件引用。
-- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“iOS 项目文件名替换”区块，记录文件重命名、跳过项、重写文件、静态校验和 `xcodebuild -list` 校验结果。
-
-常用配置：
-
-```json
-{
-  "iosFileRename": {
-    "enabled": true,
-    "includeExtensions": [".m", ".h", ".mm", ".swift"],
-    "skipFiles": [
-      "**/Pods/**",
-      "**/.symlinks/**",
-      "**/Flutter/**",
-      "**/GeneratedPluginRegistrant.*",
-      "**/build/**",
-      "**/*.pbobjc.*"
-    ],
-    "nameTemplates": ["{Word}{Kind}"],
-    "semanticWords": ["Session", "Profile", "Route", "Cache"],
-    "kinds": ["RouteView", "StateBridge", "ProfileManager", "SessionAdapter"]
-  }
-}
-```
-
-| 字段 | 说明 |
-| --- | --- |
-| `iosFileRename.enabled` | 是否启用 iOS 文件名替换。 |
-| `iosFileRename.includeExtensions` | 参与替换的扩展名。 |
-| `iosFileRename.skipFiles` | 跳过文件规则。 |
-| `iosFileRename.nameTemplates` | 新 basename 模板；支持 `{Word}` 和 `{Kind}`。 |
-| `iosFileRename.semanticWords` | 业务语义词池。 |
-| `iosFileRename.kinds` | 文件角色词池。 |
+- 更新 `#import "OldName.h"`、`#include "OldName.h"`、`#import <.../OldName.h>`、完整文件名字符串和 Xcode 工程引用。
+- 写入 `obfuscation_mapping.html` 的“iOS 项目文件名替换”区块。
 
 ### 12. iOS 内部函数换名
 
-该功能使用 `obfuscate_dart_noise.json` 中的 `iosFunctionRename` 配置，扫描 `ios` 目录下的项目自有 `.m`、`.mm` 和 `.swift` 文件，对低风险内部函数进行换名，并同步更新当前文件内的调用引用。
+读取 `obfuscate_dart_noise.json` 中的 `iosFunctionRename` 配置，扫描 iOS 自有 `.m`、`.mm` 和 `.swift` 文件，对低风险内部函数进行换名，并同步更新当前文件内调用引用。
 
-当前仅处理安全子集：
+当前处理安全子集：
 
-- Objective-C / C：文件内 `static` C 函数，例如 `static void legacyRun(void)`。
-- Objective-C：`.m/.mm` 内未在 `.h` 暴露的私有 `- / +` 方法 selector；同一个 selector 的 class extension 声明、实现和同文件调用会同步更新。
+- Objective-C / C：文件内 `static` C 函数。
+- Objective-C：`.m/.mm` 内未在 `.h` 暴露的私有 `- / +` 方法 selector。
 - Swift：`private func`、`fileprivate func`、`private static func`、`fileprivate static func`。
-- 默认跳过 `Pods`、`.symlinks`、`Flutter`、`GeneratedPluginRegistrant.*`、构建目录和 `*.pbobjc.*`。
-- 不改 `.h` 公开 Objective-C 方法，不改公开 Swift 函数，不改 `@objc` / `@IBAction` Swift 方法，不改 `main`、`init*`、`set*`、常见生命周期方法、协议/SDK 回调和融云等消息类型固定 selector（如 `getObjectName`、`persistentFlag`）。
-- 写入统一 HTML 映射文档 `obfuscation_mapping.html` 的“iOS 内部函数换名”区块，记录函数换名、跳过项、重写文件、静态校验和 `xcodebuild -list` 校验结果。
 
-常用配置：
-
-```json
-{
-  "iosFunctionRename": {
-    "enabled": true,
-    "includeExtensions": [".m", ".mm", ".swift"],
-    "skipFiles": [
-      "**/Pods/**",
-      "**/.symlinks/**",
-      "**/Flutter/**",
-      "**/GeneratedPluginRegistrant.*",
-      "**/build/**",
-      "**/*.pbobjc.*"
-    ],
-    "nameTemplates": ["handle{Word}{Kind}", "sync{Word}{Kind}", "prepare{Word}{Kind}"],
-    "semanticWords": ["Session", "Profile", "Route", "Cache", "Message"],
-    "kinds": ["State", "Payload", "Context", "Result", "Bridge"]
-  }
-}
-```
-
-| 字段 | 说明 |
-| --- | --- |
-| `iosFunctionRename.enabled` | 是否启用 iOS 内部函数换名。 |
-| `iosFunctionRename.includeExtensions` | 参与扫描的扩展名。 |
-| `iosFunctionRename.skipFiles` | 跳过文件规则。 |
-| `iosFunctionRename.nameTemplates` | 新函数名模板；支持 `{Word}` 和 `{Kind}`。 |
-| `iosFunctionRename.semanticWords` | 业务语义词池。 |
-| `iosFunctionRename.kinds` | 函数角色词池。 |
+不会改 `.h` 公开 Objective-C 方法、公开 Swift 函数、`@objc` / `@IBAction` Swift 方法、`main`、`init*`、`set*`、常见生命周期方法、协议/SDK 回调和部分固定 selector。
 
 ### 13. iOS 业务代码结构化差异混淆
 
-该功能使用 `obfuscate_dart_noise.json` 中的 `iosStructuralDiff` 配置，扫描 `ios` 目录下的 `.m`、`.mm` 和 `.swift` 文件，对可安全识别的业务方法体进行结构化改写。
+读取 `obfuscate_dart_noise.json` 中的 `iosStructuralDiff` 配置，扫描 iOS `.m`、`.mm` 和 `.swift` 文件，对可安全识别的业务方法体进行结构化改写。
 
-当前按安全顺序支持三类 transform：
+支持 transform：
 
 - `wrapDispatch`：保留原业务方法签名，把原方法体移动到新私有 helper，原方法改为调用 helper。
-- `extractBlock`：把无提前退出的连续安全语句块抽到新私有 helper，原位置替换为 helper 调用。
-- `splitControlFlow`：在无提前退出的语句块外加入 deterministic guard，不改变返回值和外部可见行为。
+- `extractBlock`：把无提前退出的连续安全语句块抽到新私有 helper。
+- `splitControlFlow`：在无提前退出的语句块外加入 deterministic guard。
 
 安全边界：
 
@@ -759,62 +355,33 @@ XML 资源模板支持占位符：
 - Objective-C 不改头文件公开 selector。
 - Swift 跳过 `public`、`@objc`、`@IBAction` 方法。
 - 含 `throw`、`break`、`continue`、`defer`、`await` 或无法安全处理的 `return` 的片段会跳过。
-- 文件中已经包含按 `helperNameTemplates` 生成的 helper 名时会跳过，避免重复包裹。
-- 输出 `ios_structural_diff_mapping_<timestamp>.json`，记录扫描文件、改写文件、transform、helper 名称、跳过原因、静态校验和 `xcodebuild -list` 结果。
 
-常用配置：
-
-```json
-{
-  "iosStructuralDiff": {
-    "enabled": true,
-    "skipFiles": [
-      "**/Pods/**",
-      "**/.symlinks/**",
-      "**/Flutter/**",
-      "**/GeneratedPluginRegistrant.*",
-      "**/build/**",
-      "**/*.pbobjc.*"
-    ],
-    "maxTransformsPerFile": 10,
-    "transforms": ["wrapDispatch", "extractBlock", "splitControlFlow"],
-    "helperNameTemplates": ["obfIos{Index}{Kind}", "syncIos{Index}{Kind}"],
-    "validation": "static_xcode_list"
-  }
-}
-```
-
-| 字段 | 说明 |
-| --- | --- |
-| `iosStructuralDiff.enabled` | 是否启用 iOS 业务代码结构化差异混淆。 |
-| `iosStructuralDiff.skipFiles` | 跳过文件规则。 |
-| `iosStructuralDiff.maxTransformsPerFile` | 单个文件最多改写的方法数。 |
-| `iosStructuralDiff.transforms` | 启用的 transform 列表，支持 `wrapDispatch`、`extractBlock`、`splitControlFlow`。 |
-| `iosStructuralDiff.helperNameTemplates` | 新 helper 名模板；支持 `{Index}` 和 `{Kind}`。 |
-| `iosStructuralDiff.validation` | 验证级别；当前支持 `static_xcode_list`。 |
+输出 `ios_structural_diff_mapping_<timestamp>.json`，记录扫描文件、改写文件、transform、跳过原因和静态校验结果。
 
 ### 14. 清理 Dart 源码注释
 
-递归扫描目标项目 `lib/**/*.dart`，删除 `//`、`///`、`/* */` 和 `/** */`
-注释。普通业务源码和 `.g.dart`、`.freezed.dart`、`.gr.dart` 等生成文件都会处理；
-字符串、raw string 和多行字符串中的注释符号不会被误删。
+递归扫描目标项目 `lib/**/*.dart`，删除 `//`、`///`、`/* */` 和 `/** */` 注释。普通业务源码和 `.g.dart`、`.freezed.dart`、`.gr.dart` 等生成文件都会处理。
 
 结果：
 
 - 原地修改包含注释的 Dart 文件。
-- 保留必要的空格和换行，避免相邻 token 粘连。
-- 删除注释后，使用当前 Dart SDK 对每个实际修改的文件执行 `dart format`。
-- 格式化失败时保留已去注释源码，不执行还原，并继续处理其他文件。
+- 保留必要空格和换行，避免相邻 token 粘连。
+- 可移除代码间空行，但保留字符串、raw string 和多行字符串内部内容。
+- 不再默认对每个修改文件执行 `dart format`。
 - 写入 `obfuscation_mapping.html` 的“Dart 源码注释清理”区块。
-- 输出扫描文件数、修改文件数、删除注释数、格式化成功数和失败文件数。
-- 单个文件失败时继续处理其他文件，并在 mapping 中记录失败路径和原因。
 
-注意：`// ignore` 和 `// ignore_for_file` 也会删除；该功能不处理 `lib`
-以外的文件，不生成备份。重复执行不会再次改写已经没有注释的文件。
+注意：`// ignore` 和 `// ignore_for_file` 也会被删除；该功能不处理 `lib` 以外的文件，不生成备份。
 
-## 建议流程
+## 临时目录模式
 
-需要直接改项目源码时：
+输入 `x` 后，工具会：
+
+1. 对原项目执行 `flutter clean`。
+2. 在原项目同级创建或覆盖 `temp_<pubspec_name>`。
+3. 复制项目到临时目录，复制时跳过 `.git` 和 `build`。
+4. 在临时项目中依次执行主要混淆任务，跳过字符串恢复。
+
+当前 `x` 流程执行顺序：
 
 ```text
 1 图片 MD5
@@ -822,19 +389,110 @@ XML 资源模板支持占位符：
 3 Android Proguard 字典
 4 String 混淆
 6 统一混淆
-7 Dart 随机代码注入
-8 类内垃圾代码注入
+7 Dart 随机代码注入/保留
+8 类内垃圾代码/字符串注入
+9 Android 项目垃圾代码生成
+10 iOS Object-C/Swift AST 混淆
+11 iOS 项目文件名替换
+12 iOS 内部函数换名
+14 Dart 源码注释清理
+```
+
+注意：当前 `x` 流程不会自动执行功能 `13`，也不会自动构建 APK/AAB/IPA。混淆完成后需要在临时项目中自行执行构建和验证。
+
+## 配置文件
+
+功能 `7`、`8`、`9`、`10`、`11`、`12`、`13` 共用 `obfuscate_dart_noise.json`。
+
+配置读取顺序：
+
+1. 优先读取目标 Flutter 项目根目录下的 `obfuscate_dart_noise.json`。
+2. 如果目标项目没有该文件，则读取本工具目录下的默认 `obfuscate_dart_noise.json`。
+
+建议把项目专用配置放在目标 Flutter 项目根目录，这样可以和目标项目一起版本管理，并避免不同项目共用一套过大的默认参数。
+
+最小结构示例：
+
+```json
+{
+  "pageCount": 24,
+  "classCount": 36,
+  "methodCountPerClass": 8,
+  "template": "page_sync_class",
+  "outputDir": "lib/dart_noise",
+  "garbageFileCountMin": 70,
+  "garbageFileCountMax": 90,
+  "snippets": ["widget_layout_page", "sync_math", "sync_string"],
+  "snippetWeights": {
+    "widget_layout_page": 2,
+    "sync_math": 3,
+    "sync_string": 2
+  },
+  "classInnerNoise": {
+    "enabled": true,
+    "targetRatio": 0.3,
+    "executionPolicy": "referenceOnly",
+    "maxTargetLines": 3500,
+    "maxMembersPerClass": 10,
+    "maxHooksPerFile": 18
+  },
+  "androidNoise": {
+    "enabled": true,
+    "componentCount": {
+      "activity": 8,
+      "service": 6,
+      "receiver": 5,
+      "provider": 3
+    },
+    "packageSegment": "platform"
+  },
+  "iosNoise": {
+    "enabled": true,
+    "targetRatio": 0.4,
+    "maxTargetLines": 20000,
+    "maxInsertionsPerFile": 20,
+    "astFallback": "skip"
+  },
+  "iosFileRename": {
+    "enabled": true,
+    "includeExtensions": [".m", ".h", ".mm", ".swift"]
+  },
+  "iosFunctionRename": {
+    "enabled": true,
+    "includeExtensions": [".m", ".mm", ".swift"]
+  },
+  "iosStructuralDiff": {
+    "enabled": true,
+    "maxTransformsPerFile": 10,
+    "transforms": ["wrapDispatch", "extractBlock", "splitControlFlow"],
+    "validation": "static_xcode_list"
+  }
+}
+```
+
+默认配置文件包含更完整的模板池、权重、跳过规则和资源模板，可以按项目规模逐步降低或提高数量。
+
+## 建议执行流程
+
+直接在目标项目执行时：
+
+```text
+1 图片 MD5
+2 图片名称混淆并清理
+3 Android Proguard 字典
+4 String 混淆
+6 统一混淆
+7 Dart 随机代码注入/保留
+8 类内垃圾代码/字符串注入
 9 Android 项目垃圾代码生成
 10 iOS Object-C/Swift AST 混淆
 11 iOS 项目文件名替换
 12 iOS 内部函数换名
 13 iOS 业务代码结构化差异混淆
 14 Dart 源码注释清理
-按需执行构建/打包
 ```
 
-想保持原项目干净时，使用 `x` 在临时目录中执行混淆和打包；Dart 源码注释清理
-会在其他改写步骤完成后最后执行。
+想保持原项目干净时，优先使用 `x` 在临时目录中执行，再到 `temp_<pubspec_name>` 中构建和验证。
 
 执行后建议至少运行：
 
@@ -845,12 +503,21 @@ flutter test
 flutter build apk --release
 ```
 
+iOS 项目还建议运行：
+
+```bash
+cd ios
+pod install
+cd ..
+flutter build ios --release
+```
+
 ## 重要注意事项
 
-- 所有会改源码或资源的功能都建议在 Git 干净状态下执行。
-- 功能2当前使用字符串匹配处理图片引用，动态拼接资源路径需要人工复核。
-- 功能4和功能6使用 analyzer AST，稳定性高于纯字符串替换，但仍建议混淆后跑 `dart analyze`。
-- 功能7/8/9/10 会增加源码体积，配置过大可能拉长分析和构建时间。
-- 功能11/12/13 会直接修改 iOS 源码引用；建议先提交当前代码或在临时目录中执行，再用 `obfuscation_mapping.html` 复核结果。
-- 功能14会删除 `lib` 下包括 ignore 指令在内的所有 Dart 注释，且不提供恢复；建议先提交代码或使用 `x` 临时目录流程。
+- 多数功能会原地修改源码或资源，建议在 Git 干净状态下执行。
+- 功能 `2` 当前使用字符串匹配处理图片引用，动态资源路径需要人工复核。
+- 功能 `4` 和 `6` 使用 analyzer AST，稳定性高于纯字符串替换，但混淆后仍需要跑 `dart analyze`。
+- 功能 `7`、`8`、`9`、`10` 会增加源码体积，配置过大可能拉长分析和构建时间。
+- 功能 `11`、`12`、`13` 会直接修改 iOS 源码引用；建议先提交当前代码或在临时目录中执行，再用 mapping 复核。
+- 功能 `14` 会删除 `lib` 下包括 ignore 指令在内的 Dart 注释，不生成恢复文件。
 - 商店审核、重复包识别并不只看代码和资源字节特征，还会综合产品功能、UI、账号、证书、包名、后端、素材来源等多维信息。本工具只能帮助改变工程层面的部分静态特征，不能保证规避任何审核判定。
