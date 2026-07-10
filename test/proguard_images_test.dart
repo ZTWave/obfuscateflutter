@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:obfuscateflutter/consts.dart';
+import 'mapping_test_utils.dart';
 import 'package:obfuscateflutter/proguard_images.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -54,5 +55,27 @@ flutter:
     expect(pubspec, isNot(contains('assets/images/anonymous_avatars.png')));
     expect(pubspec,
         contains('assets/images/${p.basename(renamedImages.single.path)}'));
+
+    final mapping = readHtmlFeatureMapping(projectDir, 'image_obfuscation');
+    expect(mapping['summary'], {
+      'images_scanned': 1,
+      'images_renamed': 1,
+      'images_removed': 0,
+      'dart_files_scanned': 1,
+      'dart_files_modified': 1,
+    });
+    expect(mapping['images'], [
+      {
+        'original_path': 'assets/images/anonymous_avatars.png',
+        'obfuscated_path':
+            'assets/images/${p.basename(renamedImages.single.path)}',
+        'action': 'renamed',
+      },
+    ]);
+
+    final report = File(p.join(projectDir.path, 'obfuscation_mapping.html'))
+        .readAsStringSync();
+    expect(report, contains('混淆图片名称并清理'));
+    expect(report, contains('图片重命名数'));
   });
 }

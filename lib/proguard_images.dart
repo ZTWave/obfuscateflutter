@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:obfuscateflutter/consts.dart';
+import 'package:obfuscateflutter/html_mapping_writer.dart';
 import 'package:obfuscateflutter/random_key.dart';
 import 'package:obfuscateflutter/yaml_helper.dart';
 import 'package:path/path.dart' as p;
@@ -47,6 +48,7 @@ Future<void> proguardImages(String projectPath) async {
       .where((value) => value is File && getFileExtName(value) == ".dart")
       .cast<File>()
       .toList();
+  var modifiedDartFiles = 0;
 
   // Process Dart files concurrently in batches to maximize I/O throughput.
   final concurrency = Platform.numberOfProcessors.clamp(4, 16);
@@ -55,7 +57,7 @@ Future<void> proguardImages(String projectPath) async {
       i,
       (i + concurrency).clamp(0, allFiles.length),
     );
-    await Future.wait(batch.map((element) async {
+    final modifiedInBatch = await Future.wait(batch.map((element) async {
       final codeStr = await element.readAsString();
       final modifiedCodeStr =
           codeStr.replaceAllMapped(_simpleStringLiteralPattern, (match) {
@@ -74,8 +76,11 @@ Future<void> proguardImages(String projectPath) async {
           flush: true,
           mode: FileMode.write,
         );
+        return true;
       }
+      return false;
     }));
+    modifiedDartFiles += modifiedInBatch.where((modified) => modified).length;
   }
 
   _updatePubspecAssets(projectPath, imageMapper);
@@ -92,6 +97,38 @@ Future<void> proguardImages(String projectPath) async {
   }
 
   _printMapping(imageMapper);
+
+  writeHtmlFeatureMapping(
+    projectPath: projectPath,
+    featureId: 'image_obfuscation',
+    featureTitle: '混淆图片名称并清理',
+    mapping: {
+      'summary': {
+        'images_scanned': imageMapper.length,
+        'images_renamed': imageMapper.where((image) => image.used).length,
+        'images_removed': imageMapper.where((image) => !image.used).length,
+        'dart_files_scanned': allFiles.length,
+        'dart_files_modified': modifiedDartFiles,
+      },
+      'images': imageMapper
+          .map((image) => {
+                'original_path': _imageAssetUri(
+                  projectPath,
+                  image.path,
+                  image.originalName,
+                ),
+                'obfuscated_path': image.used
+                    ? _imageAssetUri(
+                        projectPath,
+                        image.path,
+                        image.proguardName,
+                      )
+                    : null,
+                'action': image.used ? 'renamed' : 'removed',
+              })
+          .toList(),
+    },
+  );
 }
 
 final RegExp _simpleStringLiteralPattern = RegExp(r'''(['"])([^'"\r\n]*)\1''');
@@ -237,8 +274,7 @@ List<String> _getPathFromAsserts(
   for (final info in entryInfos) {
     if (!info.exists) continue;
 
-    if (info.isFile &&
-        p.equals(p.dirname(info.resolvedPath), imgParentPath)) {
+    if (info.isFile && p.equals(p.dirname(info.resolvedPath), imgParentPath)) {
       posableImageUsages.add(_toAssetUri(p.dirname(info.entryUri)));
     } else if (info.isDirectory &&
         p.isWithin(info.resolvedPath, imgParentPath)) {

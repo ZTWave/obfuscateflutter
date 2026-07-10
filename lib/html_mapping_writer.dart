@@ -61,6 +61,11 @@ const _summaryLabelTranslations = {
   'total_dirs_renamed': '重命名目录总数',
   'total_strings_encrypted': '加密字符串总数',
   'total_imports_rewritten': '重写 import 总数',
+  'images_scanned': '扫描图片数',
+  'images_renamed': '图片重命名数',
+  'images_removed': '图片清理数',
+  'dart_files_scanned': '扫描 Dart 文件数',
+  'dart_files_modified': '修改 Dart 文件数',
 };
 
 String initializeHtmlMappingReport(String projectPath) {
